@@ -20,11 +20,11 @@ services:
 
   api:
     build:
-      context: ..
+      context: .
       dockerfile: docker/Dockerfile
     restart: unless-stopped
     env_file:
-      - ../config/.env
+      - ./config/.env
     environment:
       DB_HOST: postgres
     ports:
@@ -33,7 +33,7 @@ services:
       postgres:
         condition: service_healthy
     volumes:
-      - ..:/app
+      - .:/app
 
 volumes:
   postgres_data:
