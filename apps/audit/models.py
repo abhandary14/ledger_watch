@@ -16,7 +16,7 @@ class AuditLog(models.Model):
     - No ForeignKey to Organization — some events (e.g. seeding) may be
       org-agnostic. Callers embed org references inside ``metadata`` if needed.
     - No ``updated_at`` — audit logs must never be mutated after creation.
-    - ``created_at`` is indexed implicitly via model ordering.
+    - No explicit index on ``created_at`` — add one if query volume warrants it.
 
     Example event types: ``"TRANSACTION_IMPORTED"``, ``"ANALYSIS_RUN"``,
     ``"ALERT_ACKNOWLEDGED"``.
