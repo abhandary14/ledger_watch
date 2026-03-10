@@ -16,9 +16,7 @@ class AuditLog(models.Model):
     - No ForeignKey to Organization — some events (e.g. seeding) may be
       org-agnostic. Callers embed org references inside ``metadata`` if needed.
     - No ``updated_at`` — audit logs must never be mutated after creation.
-    - ``created_at`` carries ``db_index=True`` for fast time-range scans;
-      ``Meta.ordering`` uses it for default ``ORDER BY`` but does not itself
-      create a DB index — the explicit index on the field does.
+    - No explicit index on ``created_at`` — add one if query volume warrants it.
 
     Example event types: ``"TRANSACTION_IMPORTED"``, ``"ANALYSIS_RUN"``,
     ``"ALERT_ACKNOWLEDGED"``.
@@ -41,8 +39,7 @@ class AuditLog(models.Model):
     )
     created_at = models.DateTimeField(
         auto_now_add=True,
-        db_index=True,
-        help_text="Timestamp when this log entry was created. Set automatically; indexed for time-range queries.",
+        help_text="Timestamp when this log entry was created. Set automatically.",
     )
 
     class Meta:
