@@ -1,0 +1,44 @@
+# ── Secrets & local config ──────────────────────────────────────────────────
+config/.env
+*.env
+.env.*
+
+# ── Version control ──────────────────────────────────────────────────────────
+.git
+.gitignore
+
+# ── Python runtime artefacts ─────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ── Virtual environments ──────────────────────────────────────────────────────
+venv/
+.venv/
+env/
+
+# ── Testing & linting cache ───────────────────────────────────────────────────
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# ── IDE & OS files ────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.local
+.DS_Store
+Thumbs.db
+
+# ── Docs & local-only files ───────────────────────────────────────────────────
+docs/
+explanations/
+*.md

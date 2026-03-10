@@ -1,6 +1,10 @@
 import uuid
+from decimal import Decimal
 
+from django.core.exceptions import ValidationError
+from django.core.validators import MinValueValidator
 from django.db import models
+from django.db.models import Q
 
 from apps.organizations.models import Organization
 
@@ -45,7 +49,8 @@ class Transaction(models.Model):
     amount = models.DecimalField(
         max_digits=14,
         decimal_places=2,
-        help_text="Transaction amount in the organization's currency. Must be positive.",
+        validators=[MinValueValidator(Decimal("0.01"))],
+        help_text="Transaction amount in the organization's currency. Must be positive (> 0).",
     )
     description = models.TextField(
         blank=True,
@@ -73,6 +78,19 @@ class Transaction(models.Model):
             # Composite index used by DuplicateTransactionAnalyzer.
             models.Index(fields=["vendor", "amount", "date"], name="tx_vendor_amount_date_idx"),
         ]
+        constraints = [
+            # DB-level guard — rejects negative/zero amounts even from raw SQL.
+            models.CheckConstraint(
+                check=Q(amount__gt=0),
+                name="transaction_amount_positive",
+            ),
+        ]
+
+    def clean(self) -> None:
+        """ORM-level validation — catches saves via admin and model.full_clean()."""
+        super().clean()
+        if self.amount is not None and self.amount <= 0:
+            raise ValidationError({"amount": "Transaction amount must be greater than zero."})
 
     def __str__(self) -> str:
         return f"{self.date} | {self.vendor} | {self.amount}"
