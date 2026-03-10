@@ -1,0 +1,102 @@
+# =============================================================================
+# .dockerignore — controls what the Docker daemon receives as build context.
+# The Dockerfile's "COPY . ." only copies files NOT matched here.
+# Keep this in sync with .gitignore for any new local-only artifacts.
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Secrets & environment files — NEVER ship these into the image
+# ---------------------------------------------------------------------------
+config/.env
+.env
+.env.*
+*.local
+
+# ---------------------------------------------------------------------------
+# Git internals — not needed at runtime, adds ~megabytes to the build context
+# ---------------------------------------------------------------------------
+.git/
+.gitignore
+
+# ---------------------------------------------------------------------------
+# Python virtual environment — the image installs its own deps via pip
+# ---------------------------------------------------------------------------
+venv/
+.venv/
+env/
+ENV/
+
+# ---------------------------------------------------------------------------
+# Python bytecode & caches — regenerated inside the container
+# ---------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# ---------------------------------------------------------------------------
+# Test & coverage artifacts — not needed to run the application
+# ---------------------------------------------------------------------------
+tests/
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+
+# ---------------------------------------------------------------------------
+# Linter / type-checker caches
+# ---------------------------------------------------------------------------
+.ruff_cache/
+.mypy_cache/
+.dmypy.json
+.pyre/
+.pytype/
+
+# ---------------------------------------------------------------------------
+# Build & packaging artifacts
+# ---------------------------------------------------------------------------
+build/
+dist/
+*.egg-info/
+*.egg
+wheels/
+sdist/
+
+# ---------------------------------------------------------------------------
+# Local dev tooling & IDE files
+# ---------------------------------------------------------------------------
+.vscode/
+.idea/
+*.iml
+.cursorignore
+.cursorindexingignore
+.devctx/
+
+# ---------------------------------------------------------------------------
+# Documentation & planning files — not needed at runtime
+# ---------------------------------------------------------------------------
+docs/
+explanations/
+plan.md
+instructions.txt
+README.md
+
+# ---------------------------------------------------------------------------
+# Docker files themselves — no need to COPY them into the image's /app
+# ---------------------------------------------------------------------------
+docker-compose.yml
+docker/
+
+# ---------------------------------------------------------------------------
+# OS & editor noise
+# ---------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
