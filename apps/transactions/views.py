@@ -27,12 +27,7 @@ class TransactionImportView(APIView):
         serializer.is_valid(raise_exception=True)
 
         org_id = serializer.validated_data["organization_id"]
-        # Strip the nested organization_id from each transaction dict —
-        # the service receives clean field-only dicts.
-        tx_data = [
-            {k: v for k, v in tx.items() if k != "organization_id"}
-            for tx in serializer.validated_data["transactions"]
-        ]
+        tx_data = serializer.validated_data["transactions"]
 
         created = TransactionService.bulk_import(str(org_id), tx_data)
 
