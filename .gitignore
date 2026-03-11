@@ -212,3 +212,5 @@ instructions.txt
 .devctx/
 plan.md
 explanations/
+postman/
+.postman/
