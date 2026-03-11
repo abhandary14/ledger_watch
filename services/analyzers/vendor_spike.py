@@ -76,8 +76,8 @@ class VendorSpikeAnalyzer(Analyzer):
         return {
             "analyzer": "vendor_spike",
             "spike_threshold_pct": SPIKE_THRESHOLD * 100,
-            "current_month": str(current_month.date()),
-            "previous_month": str(previous_month.date()),
+            "current_month": str(current_month),
+            "previous_month": str(previous_month),
             "flagged_count": len(flagged),
             "flagged_vendors": flagged,
         }
