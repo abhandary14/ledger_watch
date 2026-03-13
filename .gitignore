@@ -215,3 +215,5 @@ explanations/
 postman/
 .postman/
 LedgerWatch.postman_collection.json
+CLAUDE.md
+settings.json
