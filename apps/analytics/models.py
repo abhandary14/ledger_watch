@@ -88,7 +88,7 @@ class AnalysisRun(models.Model):
         constraints = [
             # PENDING: no results, no error.
             models.CheckConstraint(
-                check=(
+                condition=(
                     ~Q(status="PENDING")
                     | Q(results_summary__isnull=True, error_message__isnull=True)
                 ),
@@ -96,7 +96,7 @@ class AnalysisRun(models.Model):
             ),
             # SUCCEEDED: results required, no error.
             models.CheckConstraint(
-                check=(
+                condition=(
                     ~Q(status="SUCCEEDED")
                     | Q(results_summary__isnull=False, error_message__isnull=True)
                 ),
@@ -104,7 +104,7 @@ class AnalysisRun(models.Model):
             ),
             # FAILED: error required, no results.
             models.CheckConstraint(
-                check=(
+                condition=(
                     ~Q(status="FAILED")
                     | Q(error_message__isnull=False, results_summary__isnull=True)
                 ),

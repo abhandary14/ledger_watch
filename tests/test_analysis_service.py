@@ -36,6 +36,14 @@ class TestAnalysisServiceRunAnalysis:
         assert after_count == before_count + 1
 
     def test_run_generates_alerts_when_flagged(self, org):
+        # Create small baseline txs so mean is low, then one large tx above threshold
+        for i in range(5):
+            Transaction.objects.create(
+                organization=org,
+                date=date(2026, 1, i + 1),
+                vendor="Normal",
+                amount=Decimal("100.00"),
+            )
         Transaction.objects.create(
             organization=org,
             date=date(2026, 1, 10),

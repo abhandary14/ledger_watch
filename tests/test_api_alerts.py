@@ -42,7 +42,7 @@ class TestAlertListAPI:
         assert response.status_code == 200
         results = response.data.get("results", response.data)
         for alert in results:
-            assert str(alert["organization"]) == str(org.id)
+            assert str(alert["organization_id"]) == str(org.id)
 
     def test_filter_by_severity(self, api_client, org):
         Alert.objects.create(

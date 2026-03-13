@@ -103,7 +103,7 @@ class TestAnalysisResultsAPI:
         assert response.status_code == 200
         results = response.data.get("results", response.data)
         for run in results:
-            assert str(run["organization"]) == str(org.id)
+            assert str(run["organization_id"]) == str(org.id)
 
     def test_filter_by_analysis_type(self, api_client, org):
         api_client.post(

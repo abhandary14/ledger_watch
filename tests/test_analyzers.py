@@ -49,7 +49,9 @@ class TestLargeTransactionAnalyzer:
         assert result["flagged_count"] == 0
 
     def test_flags_relative_outlier_above_threshold(self, org):
-        # Mean $6000; threshold = max(12000, 10000) = 12000
+        # 5 txs at $6000 + outlier at $20000
+        # Mean = (30000 + 20000) / 6 = $8333; threshold = max(16667, 10000) = $16667
+        # $20000 > $16667 → flagged
         for i in range(5):
             Transaction.objects.create(
                 organization=org,
@@ -61,7 +63,7 @@ class TestLargeTransactionAnalyzer:
             organization=org,
             date=date(2026, 1, 10),
             vendor="Spike",
-            amount=Decimal("13000.00"),
+            amount=Decimal("20000.00"),
         )
 
         result = LargeTransactionAnalyzer().run(org.id)
