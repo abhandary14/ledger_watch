@@ -44,6 +44,10 @@ pipeline {
         // Credentials are masked in logs; values injected from Jenkins credential store
         SECRET_KEY   = credentials('LEDGERWATCH_SECRET_KEY')
         DB_PASSWORD  = credentials('LEDGERWATCH_DB_PASSWORD')
+        // Translate container workspace path to Windows host path for sibling
+        // container volume mounts (Docker Desktop resolves host paths, not
+        // paths inside the Jenkins container).
+        HOST_WORKSPACE = "C:/jenkins_home/workspace/ledgerwatch"
     }
 
     options {
@@ -69,7 +73,7 @@ pipeline {
             steps {
                 sh """
                     docker run --rm \\
-                        -v "\${WORKSPACE}:/app:ro" -w /app \\
+                        -v "${HOST_WORKSPACE}:/app:ro" -w /app \\
                         python:3.12-slim \\
                         sh -c "pip install --quiet 'ruff>=0.6,<0.7' && ruff check ."
                 """
@@ -114,7 +118,7 @@ pipeline {
                 sh """
                     docker run --rm \\
                         --network ${CI_NETWORK} \\
-                        -v "\${WORKSPACE}:/app" -w /app \\
+                        -v "${HOST_WORKSPACE}:/app" -w /app \\
                         -e SECRET_KEY="${SECRET_KEY}" \\
                         -e DEBUG=True \\
                         -e ALLOWED_HOSTS=localhost \\
