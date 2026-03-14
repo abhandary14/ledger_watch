@@ -75,7 +75,7 @@ pipeline {
                     docker run --rm \\
                         -v "${HOST_WORKSPACE}:/app:ro" -w /app \\
                         python:3.12-slim \\
-                        sh -c "pip install --quiet 'ruff>=0.6,<0.7' && ruff check ."
+                        sh -c "pip install --quiet 'ruff>=0.6,<0.7' && ruff check --no-cache ."
                 """
             }
         }
