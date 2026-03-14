@@ -178,7 +178,7 @@ pipeline {
                         "DB_PORT=5432",
                     ].join('\n') + '\n'
                 }
-                sh 'docker compose run --rm api python manage.py migrate --noinput'
+                sh 'docker compose run --no-build --rm api python manage.py migrate --noinput'
             }
         }
 
@@ -188,7 +188,7 @@ pipeline {
         // only containers whose image changed are recreated.
         stage('Deploy') {
             steps {
-                sh 'docker compose up -d'
+                sh 'docker compose up --no-build -d'
                 echo "Deployed — API: http://localhost:8000 | Docs: http://localhost:8000/api/docs/"
             }
         }
