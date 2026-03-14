@@ -17,6 +17,7 @@ services:
       retries: 10
 
   api:
+    image: ledgerwatch:latest
     build:
       context: .
       dockerfile: docker/Dockerfile

@@ -166,6 +166,7 @@ pipeline {
         // The .env file is always deleted in post { always { } } below.
         stage('Run Migrations') {
             steps {
+                // Ensure the compose postgres container is running
                 script {
                     writeFile file: 'config/.env', text: [
                         "SECRET_KEY=${env.SECRET_KEY}",
@@ -178,7 +179,29 @@ pipeline {
                         "DB_PORT=5432",
                     ].join('\n') + '\n'
                 }
-                sh 'docker compose run --no-build --rm api python manage.py migrate --noinput'
+                sh 'docker compose up -d postgres'
+                // Wait for postgres to be ready
+                sh """
+                    for i in \$(seq 1 30); do
+                        docker compose exec postgres pg_isready -U ledger -d ledgerwatch && break || true
+                        echo "  postgres not ready yet (\$i/30)..."
+                        sleep 2
+                    done
+                """
+                sh """
+                    docker run --rm \\
+                        --network ledgerwatch_default \\
+                        -e SECRET_KEY="${SECRET_KEY}" \\
+                        -e DEBUG=False \\
+                        -e ALLOWED_HOSTS=localhost,127.0.0.1 \\
+                        -e DB_NAME=ledgerwatch \\
+                        -e DB_USER=ledger \\
+                        -e DB_PASSWORD="${DB_PASSWORD}" \\
+                        -e DB_HOST=postgres \\
+                        -e DB_PORT=5432 \\
+                        ${IMAGE_NAME}:${BUILD_NUMBER} \\
+                        python manage.py migrate --noinput
+                """
             }
         }
 
@@ -188,7 +211,7 @@ pipeline {
         // only containers whose image changed are recreated.
         stage('Deploy') {
             steps {
-                sh 'docker compose up --no-build -d'
+                sh "docker compose up -d --no-build"
                 echo "Deployed — API: http://localhost:8000 | Docs: http://localhost:8000/api/docs/"
             }
         }
