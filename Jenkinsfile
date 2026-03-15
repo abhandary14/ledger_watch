@@ -35,7 +35,10 @@ pipeline {
     agent any
 
     environment {
-        IMAGE_NAME   = 'ledgerwatch'
+        IMAGE_NAME          = 'ledgerwatch'
+        // Set COMPOSE_PROJECT_NAME explicitly so the compose network name is
+        // always predictable (${COMPOSE_PROJECT_NAME}_default).
+        COMPOSE_PROJECT_NAME = 'ledgerwatch'
         // Unique names per build so parallel/re-run builds never collide
         CI_NETWORK   = "ledgerwatch-ci-${BUILD_NUMBER}"
         CI_DB        = "ledgerwatch-db-${BUILD_NUMBER}"
@@ -44,10 +47,11 @@ pipeline {
         // Credentials are masked in logs; values injected from Jenkins credential store
         SECRET_KEY   = credentials('LEDGERWATCH_SECRET_KEY')
         DB_PASSWORD  = credentials('LEDGERWATCH_DB_PASSWORD')
-        // Translate container workspace path to Windows host path for sibling
-        // container volume mounts (Docker Desktop resolves host paths, not
-        // paths inside the Jenkins container).
-        HOST_WORKSPACE = "C:/jenkins_home/workspace/ledgerwatch"
+        // On Docker Desktop the Jenkins container's WORKSPACE path is not directly
+        // usable as a host volume mount. Set JENKINS_HOST_WORKSPACE in the Jenkins
+        // node/agent config to the equivalent host path; falls back to WORKSPACE
+        // for Linux agents where the paths are identical.
+        HOST_WORKSPACE = "${env.JENKINS_HOST_WORKSPACE ?: env.WORKSPACE}"
     }
 
     options {
@@ -103,13 +107,18 @@ pipeline {
 
                 // 3. Wait until PostgreSQL is accepting connections (up to 60 s)
                 sh """
+                    ready=0
                     for i in \$(seq 1 30); do
                         docker exec ${CI_DB} \\
                             pg_isready -U ${TEST_DB_USER} -d ${TEST_DB_NAME} \\
-                            && break || true
+                            && ready=1 && break || true
                         echo "  postgres not ready yet (\$i/30), retrying in 2 s..."
                         sleep 2
                     done
+                    if [ "\$ready" -eq 0 ]; then
+                        echo "ERROR: postgres (${CI_DB}) did not become ready after 60 s"
+                        exit 1
+                    fi
                 """
 
                 // 4. Install dependencies and run the full test suite.
@@ -182,15 +191,20 @@ pipeline {
                 sh 'docker compose up -d postgres'
                 // Wait for postgres to be ready
                 sh """
+                    ready=0
                     for i in \$(seq 1 30); do
-                        docker compose exec postgres pg_isready -U ledger -d ledgerwatch && break || true
+                        docker compose exec postgres pg_isready -U ledger -d ledgerwatch && ready=1 && break || true
                         echo "  postgres not ready yet (\$i/30)..."
                         sleep 2
                     done
+                    if [ "\$ready" -eq 0 ]; then
+                        echo "ERROR: compose postgres did not become ready after 60 s"
+                        exit 1
+                    fi
                 """
                 sh """
                     docker run --rm \\
-                        --network ledgerwatch_default \\
+                        --network ${COMPOSE_PROJECT_NAME}_default \\
                         -e SECRET_KEY="${SECRET_KEY}" \\
                         -e DEBUG=False \\
                         -e ALLOWED_HOSTS=localhost,127.0.0.1 \\
