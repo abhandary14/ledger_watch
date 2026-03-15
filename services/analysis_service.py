@@ -93,11 +93,32 @@ class AnalysisService:
 
         # Commit the SUCCEEDED status before generating alerts — a failure in
         # AlertService must not roll back a run that has already completed.
-        with transaction.atomic():
-            run.status = AnalysisRun.Status.SUCCEEDED
-            run.results_summary = results
-            run.full_clean()
-            run.save(update_fields=["status", "results_summary"])
+        try:
+            with transaction.atomic():
+                run.status = AnalysisRun.Status.SUCCEEDED
+                run.results_summary = results
+                run.full_clean()
+                run.save(update_fields=["status", "results_summary"])
+        except Exception as exc:  # noqa: BLE001
+            # full_clean() or save() failed; mark FAILED so the run is not
+            # left stuck at PENDING. Open a fresh transaction — the one above
+            # was rolled back when the exception was raised.
+            error_message = f"{type(exc).__name__}: {exc}"
+            with transaction.atomic():
+                run.status = AnalysisRun.Status.FAILED
+                run.error_message = error_message
+                run.save(update_fields=["status", "error_message"])
+                AuditLog.objects.create(
+                    organization_id=organization_id,
+                    event_type="ANALYSIS_RUN",
+                    metadata={
+                        "run_id": str(run.id),
+                        "analysis_type": analysis_type,
+                        "status": AnalysisRun.Status.FAILED,
+                        "error": error_message,
+                    },
+                )
+            raise
 
         try:
             alerts_created = AlertService.generate_alerts(organization_id, analysis_type, results)
