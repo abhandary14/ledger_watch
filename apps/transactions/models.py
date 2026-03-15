@@ -81,7 +81,7 @@ class Transaction(models.Model):
         constraints = [
             # DB-level guard — rejects negative/zero amounts even from raw SQL.
             models.CheckConstraint(
-                check=Q(amount__gt=0),
+                condition=Q(amount__gt=0),
                 name="transaction_amount_positive",
             ),
         ]

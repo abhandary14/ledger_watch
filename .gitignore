@@ -210,5 +210,12 @@ __marimo__/
 instructions.txt
 # DevContext - AI coding context
 .devctx/
-plan.md
+/plan.md
 explanations/
+postman/
+.postman/
+/LedgerWatch.postman_collection.json
+/CLAUDE.md
+/settings.json
+/agent_team_instructions.json
+observations/
