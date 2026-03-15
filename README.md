@@ -12,6 +12,8 @@ LedgerWatch ingests synthetic business transactions, runs pluggable analysis eng
 
 ## The frontend is in progress.
 
+> Most of the code and text in this project was generated with the help of AI tools.
+
 ## Features
 
 - **Bulk transaction import** with full validation and atomic writes
