@@ -8,6 +8,7 @@ AnalysisResultsView GET /api/v1/analysis/results  → list past AnalysisRun reco
 from __future__ import annotations
 
 from django.shortcuts import get_object_or_404
+from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema, extend_schema_view
 from rest_framework import status
 from rest_framework.generics import ListAPIView, RetrieveAPIView
 from rest_framework.request import Request
@@ -25,20 +26,25 @@ class AnalysisRunView(APIView):
     POST /api/v1/analysis/run
 
     Trigger a new analysis run for an organisation.
-
-    Request body::
-
-        {
-            "organization_id": "<uuid>",
-            "analysis_type": "large_transaction"
-        }
-
-    Responses:
-        201 Created        — run completed (SUCCEEDED or FAILED — both are persisted).
-        400 Bad Request    — invalid body or unknown analyzer type.
-        404 Not Found      — organization_id not in DB.
     """
 
+    @extend_schema(
+        tags=["Analysis"],
+        summary="Trigger an analysis run",
+        description=(
+            "Runs the specified analyzer against all transactions for the organization. "
+            "The run is persisted with status **SUCCEEDED** or **FAILED**. "
+            "On success, alerts are automatically generated and written to the Alerts table.\n\n"
+            "Available `analysis_type` values: `large_transaction`, `burn_rate`, "
+            "`vendor_spike`, `duplicate`."
+        ),
+        request=AnalysisRunRequestSerializer,
+        responses={
+            201: AnalysisRunSerializer,
+            400: OpenApiResponse(description="Invalid request body or unknown `analysis_type`."),
+            404: OpenApiResponse(description="`organization_id` not found."),
+        },
+    )
     def post(self, request: Request) -> Response:
         serializer = AnalysisRunRequestSerializer(data=request.data)
         if not serializer.is_valid():
@@ -63,6 +69,18 @@ class AnalysisRunView(APIView):
         return Response(out.data, status=status.HTTP_201_CREATED)
 
 
+@extend_schema_view(
+    get=extend_schema(
+        tags=["Analysis"],
+        summary="List analysis runs",
+        description="Paginated list of all AnalysisRun records, newest first.",
+        parameters=[
+            OpenApiParameter("organization_id", str, description="Filter by organization UUID."),
+            OpenApiParameter("analysis_type", str, description="Filter by analyzer key (e.g. `large_transaction`)."),
+            OpenApiParameter("status", str, description="Filter by run status: `PENDING`, `SUCCEEDED`, or `FAILED`."),
+        ],
+    )
+)
 class AnalysisResultsView(ListAPIView):
     """
     GET /api/v1/analysis/results
@@ -95,6 +113,17 @@ class AnalysisResultsView(ListAPIView):
         return qs
 
 
+@extend_schema_view(
+    get=extend_schema(
+        tags=["Analysis"],
+        summary="Retrieve an analysis run",
+        description="Retrieve a single AnalysisRun record by its UUID, including full `results_summary`.",
+        responses={
+            200: AnalysisRunSerializer,
+            404: OpenApiResponse(description="Analysis run not found."),
+        },
+    )
+)
 class AnalysisRunDetailView(RetrieveAPIView):
     """
     GET /api/v1/analysis/results/<uuid>/
