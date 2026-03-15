@@ -17,7 +17,6 @@ failure inside AlertService never reverts a SUCCEEDED run back to PENDING.
 
 from __future__ import annotations
 
-import traceback
 from uuid import UUID
 
 from django.db import transaction
@@ -69,10 +68,9 @@ class AnalysisService:
         try:
             results = analyzer.run(organization_id)
         except Exception as exc:  # noqa: BLE001
-            # Capture the full traceback for debugging, but only store the
-            # message in the DB to avoid storing potentially sensitive frames.
+            # Only store the exception message — avoid persisting potentially
+            # sensitive frames (file paths, local variables) in the AuditLog.
             error_message = f"{type(exc).__name__}: {exc}"
-            tb_lines = traceback.format_exc()
 
             with transaction.atomic():
                 run.status = AnalysisRun.Status.FAILED
@@ -88,8 +86,6 @@ class AnalysisService:
                         "analysis_type": analysis_type,
                         "status": AnalysisRun.Status.FAILED,
                         "error": error_message,
-                        # Store first 500 chars of traceback for quick triage.
-                        "traceback_snippet": tb_lines[:500],
                     },
                 )
 
@@ -103,18 +99,26 @@ class AnalysisService:
             run.full_clean()
             run.save(update_fields=["status", "results_summary"])
 
-        alerts_created = AlertService.generate_alerts(organization_id, analysis_type, results)
+        try:
+            alerts_created = AlertService.generate_alerts(organization_id, analysis_type, results)
+            alert_error = None
+        except Exception as exc:  # noqa: BLE001
+            alerts_created = []
+            alert_error = f"{type(exc).__name__}: {exc}"
 
         with transaction.atomic():
+            metadata = {
+                "run_id": str(run.id),
+                "analysis_type": analysis_type,
+                "status": AnalysisRun.Status.SUCCEEDED,
+                "alerts_created": len(alerts_created),
+            }
+            if alert_error is not None:
+                metadata["alert_failure"] = alert_error
             AuditLog.objects.create(
                 organization_id=organization_id,
                 event_type="ANALYSIS_RUN",
-                metadata={
-                    "run_id": str(run.id),
-                    "analysis_type": analysis_type,
-                    "status": AnalysisRun.Status.SUCCEEDED,
-                    "alerts_created": len(alerts_created),
-                },
+                metadata=metadata,
             )
 
         return run
