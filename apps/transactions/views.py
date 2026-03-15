@@ -4,7 +4,8 @@ Views for the transactions app.
 Thin views — all business logic lives in TransactionService.
 """
 
-from rest_framework import status
+from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema, extend_schema_view, inline_serializer
+from rest_framework import serializers, status
 from rest_framework.generics import ListAPIView, RetrieveAPIView
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -22,6 +23,23 @@ class TransactionImportView(APIView):
     Bulk-import a list of transactions for an organization.
     """
 
+    @extend_schema(
+        tags=["Transactions"],
+        summary="Bulk import transactions",
+        description=(
+            "Atomically imports a list of transactions for the given organization. "
+            "All rows are validated before any are persisted. "
+            "An audit log entry is written on success."
+        ),
+        request=TransactionImportSerializer,
+        responses={
+            201: inline_serializer(
+                "ImportResult",
+                fields={"imported": serializers.IntegerField()},
+            ),
+            400: OpenApiResponse(description="Validation error — invalid fields or empty list."),
+        },
+    )
     def post(self, request):
         serializer = TransactionImportSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -37,6 +55,22 @@ class TransactionImportView(APIView):
         )
 
 
+@extend_schema_view(
+    get=extend_schema(
+        tags=["Transactions"],
+        summary="List transactions",
+        description=(
+            "Returns a paginated list of all transactions (newest first). "
+            "Supports filtering by vendor, category, and date range."
+        ),
+        parameters=[
+            OpenApiParameter("vendor", str, description="Filter by vendor name (case-insensitive contains)."),
+            OpenApiParameter("category", str, description="Filter by category (exact match)."),
+            OpenApiParameter("date_from", str, description="Inclusive lower bound — YYYY-MM-DD."),
+            OpenApiParameter("date_to", str, description="Inclusive upper bound — YYYY-MM-DD."),
+        ],
+    )
+)
 class TransactionListView(ListAPIView):
     """
     GET /api/v1/transactions/
@@ -52,6 +86,17 @@ class TransactionListView(ListAPIView):
         return Transaction.objects.select_related("organization").all()
 
 
+@extend_schema_view(
+    get=extend_schema(
+        tags=["Transactions"],
+        summary="Retrieve a transaction",
+        description="Retrieve a single transaction by its UUID.",
+        responses={
+            200: TransactionSerializer,
+            404: OpenApiResponse(description="Transaction not found."),
+        },
+    )
+)
 class TransactionDetailView(RetrieveAPIView):
     """
     GET /api/v1/transactions/{id}/

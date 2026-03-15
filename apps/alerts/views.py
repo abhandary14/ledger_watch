@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from django.db import transaction
 from django.shortcuts import get_object_or_404
+from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema, extend_schema_view
 from rest_framework import status
 from rest_framework.generics import ListAPIView
 from rest_framework.request import Request
@@ -21,6 +22,22 @@ from apps.alerts.serializers import AlertSerializer
 from apps.audit.models import AuditLog
 
 
+@extend_schema_view(
+    get=extend_schema(
+        tags=["Alerts"],
+        summary="List alerts",
+        description=(
+            "Paginated list of all Alert records, newest first. "
+            "Alerts are created automatically after each analysis run."
+        ),
+        parameters=[
+            OpenApiParameter("organization_id", str, description="Filter by organization UUID."),
+            OpenApiParameter("alert_type", str, description="Filter by analyzer key (e.g. `large_transaction`)."),
+            OpenApiParameter("severity", str, description="Filter by severity: `LOW`, `MEDIUM`, or `HIGH`."),
+            OpenApiParameter("status", str, description="Filter by status: `OPEN`, `ACKNOWLEDGED`, or `RESOLVED`."),
+        ],
+    )
+)
 class AlertListView(ListAPIView):
     """
     GET /api/v1/alerts/
@@ -68,6 +85,21 @@ class AlertAcknowledgeView(APIView):
     already-acknowledged or resolved alert returns HTTP 409 Conflict.
     """
 
+    @extend_schema(
+        tags=["Alerts"],
+        summary="Acknowledge an alert",
+        description=(
+            "Transitions the alert from **OPEN → ACKNOWLEDGED**. "
+            "Returns HTTP 409 if the alert is not currently OPEN. "
+            "Writes an audit log entry on success."
+        ),
+        request=None,
+        responses={
+            200: AlertSerializer,
+            404: OpenApiResponse(description="Alert not found."),
+            409: OpenApiResponse(description="Alert is not OPEN and cannot be acknowledged."),
+        },
+    )
     def post(self, request: Request, pk) -> Response:
         with transaction.atomic():
             alert = get_object_or_404(Alert.objects.select_for_update(), pk=pk)
@@ -104,6 +136,21 @@ class AlertResolveView(APIView):
     Attempting to resolve an already-resolved alert returns HTTP 409 Conflict.
     """
 
+    @extend_schema(
+        tags=["Alerts"],
+        summary="Resolve an alert",
+        description=(
+            "Transitions the alert to **RESOLVED** from any non-resolved status. "
+            "Returns HTTP 409 if the alert is already RESOLVED. "
+            "Writes an audit log entry on success."
+        ),
+        request=None,
+        responses={
+            200: AlertSerializer,
+            404: OpenApiResponse(description="Alert not found."),
+            409: OpenApiResponse(description="Alert is already RESOLVED."),
+        },
+    )
     def post(self, request: Request, pk) -> Response:
         with transaction.atomic():
             alert = get_object_or_404(Alert.objects.select_for_update(), pk=pk)
