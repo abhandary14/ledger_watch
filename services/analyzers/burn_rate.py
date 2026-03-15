@@ -5,7 +5,7 @@ Logic:
 - Expenses: transactions with amount > 0 that are NOT in the "Revenue" category.
 - Revenue: transactions in the "Revenue" category.
 - Monthly net burn = average monthly expenses - average monthly revenue.
-- Runway months = total remaining cash proxy (last month's revenue) / net burn.
+- Runway months = average monthly revenue / net burn.
   If net burn <= 0, the org is cash-flow positive (runway reported as None).
 """
 
@@ -38,14 +38,19 @@ class BurnRateAnalyzer(Analyzer):
             .annotate(total=Sum("amount"))
         )
 
-        expense_totals = [float(r["total"]) for r in expense_by_month]
-        revenue_totals = [float(r["total"]) for r in revenue_by_month]
+        expense_map = {r["month"]: float(r["total"]) for r in expense_by_month}
+        revenue_map = {r["month"]: float(r["total"]) for r in revenue_by_month}
+
+        # Use the union of months so both averages share the same denominator.
+        # Months with no expenses or no revenue contribute 0 to their respective sum.
+        all_months = expense_map.keys() | revenue_map.keys()
+        n = len(all_months)
 
         avg_monthly_expenses = (
-            sum(expense_totals) / len(expense_totals) if expense_totals else 0.0
+            sum(expense_map.get(m, 0.0) for m in all_months) / n if n else 0.0
         )
         avg_monthly_revenue = (
-            sum(revenue_totals) / len(revenue_totals) if revenue_totals else 0.0
+            sum(revenue_map.get(m, 0.0) for m in all_months) / n if n else 0.0
         )
 
         net_burn = avg_monthly_expenses - avg_monthly_revenue

@@ -8,6 +8,7 @@ AlertResolveView     POST /api/v1/alerts/<uuid>/resolve     — mark RESOLVED
 
 from __future__ import annotations
 
+from django.db import transaction
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.generics import ListAPIView
@@ -68,27 +69,28 @@ class AlertAcknowledgeView(APIView):
     """
 
     def post(self, request: Request, pk) -> Response:
-        alert = get_object_or_404(Alert, pk=pk)
+        with transaction.atomic():
+            alert = get_object_or_404(Alert.objects.select_for_update(), pk=pk)
 
-        if alert.status != Alert.Status.OPEN:
-            return Response(
-                {
-                    "detail": (
-                        f"Alert is already {alert.status} and cannot be acknowledged. "
-                        "Only OPEN alerts can be acknowledged."
-                    )
-                },
-                status=status.HTTP_409_CONFLICT,
+            if alert.status != Alert.Status.OPEN:
+                return Response(
+                    {
+                        "detail": (
+                            f"Alert is already {alert.status} and cannot be acknowledged. "
+                            "Only OPEN alerts can be acknowledged."
+                        )
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
+
+            alert.status = Alert.Status.ACKNOWLEDGED
+            alert.save(update_fields=["status"])
+
+            AuditLog.objects.create(
+                organization_id=alert.organization_id,
+                event_type="ALERT_ACKNOWLEDGED",
+                metadata={"alert_id": str(alert.id), "alert_type": alert.alert_type},
             )
-
-        alert.status = Alert.Status.ACKNOWLEDGED
-        alert.save(update_fields=["status"])
-
-        AuditLog.objects.create(
-            organization_id=alert.organization_id,
-            event_type="ALERT_ACKNOWLEDGED",
-            metadata={"alert_id": str(alert.id), "alert_type": alert.alert_type},
-        )
 
         return Response(AlertSerializer(alert).data, status=status.HTTP_200_OK)
 
@@ -103,21 +105,22 @@ class AlertResolveView(APIView):
     """
 
     def post(self, request: Request, pk) -> Response:
-        alert = get_object_or_404(Alert, pk=pk)
+        with transaction.atomic():
+            alert = get_object_or_404(Alert.objects.select_for_update(), pk=pk)
 
-        if alert.status == Alert.Status.RESOLVED:
-            return Response(
-                {"detail": "Alert is already RESOLVED."},
-                status=status.HTTP_409_CONFLICT,
+            if alert.status == Alert.Status.RESOLVED:
+                return Response(
+                    {"detail": "Alert is already RESOLVED."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+
+            alert.status = Alert.Status.RESOLVED
+            alert.save(update_fields=["status"])
+
+            AuditLog.objects.create(
+                organization_id=alert.organization_id,
+                event_type="ALERT_RESOLVED",
+                metadata={"alert_id": str(alert.id), "alert_type": alert.alert_type},
             )
-
-        alert.status = Alert.Status.RESOLVED
-        alert.save(update_fields=["status"])
-
-        AuditLog.objects.create(
-            organization_id=alert.organization_id,
-            event_type="ALERT_RESOLVED",
-            metadata={"alert_id": str(alert.id), "alert_type": alert.alert_type},
-        )
 
         return Response(AlertSerializer(alert).data, status=status.HTTP_200_OK)

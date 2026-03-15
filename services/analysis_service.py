@@ -11,8 +11,8 @@ Calling run_analysis() will:
   6. On success  → call AlertService to generate Alert objects from results.
   7. Write an ANALYSIS_RUN AuditLog entry recording the outcome.
 
-All DB state changes are wrapped in a single atomic block so the
-AnalysisRun row is always consistent with the actual outcome.
+The run status update is committed before alerts are generated so that a
+failure inside AlertService never reverts a SUCCEEDED run back to PENDING.
 """
 
 from __future__ import annotations
@@ -66,31 +66,8 @@ class AnalysisService:
                 # status defaults to PENDING; results_summary/error_message are NULL.
             )
 
-        alerts_created: list = []
         try:
             results = analyzer.run(organization_id)
-
-            with transaction.atomic():
-                run.status = AnalysisRun.Status.SUCCEEDED
-                run.results_summary = results
-                run.full_clean()
-                run.save(update_fields=["status", "results_summary"])
-
-                alerts_created = AlertService.generate_alerts(
-                    organization_id, analysis_type, results
-                )
-
-                AuditLog.objects.create(
-                    organization_id=organization_id,
-                    event_type="ANALYSIS_RUN",
-                    metadata={
-                        "run_id": str(run.id),
-                        "analysis_type": analysis_type,
-                        "status": AnalysisRun.Status.SUCCEEDED,
-                        "alerts_created": len(alerts_created),
-                    },
-                )
-
         except Exception as exc:  # noqa: BLE001
             # Capture the full traceback for debugging, but only store the
             # message in the DB to avoid storing potentially sensitive frames.
@@ -115,5 +92,29 @@ class AnalysisService:
                         "traceback_snippet": tb_lines[:500],
                     },
                 )
+
+            return run
+
+        # Commit the SUCCEEDED status before generating alerts — a failure in
+        # AlertService must not roll back a run that has already completed.
+        with transaction.atomic():
+            run.status = AnalysisRun.Status.SUCCEEDED
+            run.results_summary = results
+            run.full_clean()
+            run.save(update_fields=["status", "results_summary"])
+
+        alerts_created = AlertService.generate_alerts(organization_id, analysis_type, results)
+
+        with transaction.atomic():
+            AuditLog.objects.create(
+                organization_id=organization_id,
+                event_type="ANALYSIS_RUN",
+                metadata={
+                    "run_id": str(run.id),
+                    "analysis_type": analysis_type,
+                    "status": AnalysisRun.Status.SUCCEEDED,
+                    "alerts_created": len(alerts_created),
+                },
+            )
 
         return run
