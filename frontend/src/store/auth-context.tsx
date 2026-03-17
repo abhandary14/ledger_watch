@@ -65,6 +65,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(me)
     } catch (err) {
       setAccessToken(null)
+      setUser(null)
       throw err
     }
   }, [])
