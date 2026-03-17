@@ -48,7 +48,7 @@ class RegisterView(APIView):
                 AuditLog.objects.create(
                     organization=org,
                     event_type="USER_REGISTERED",
-                    metadata={"user_email": email},
+                    metadata={"user_id": str(user.id)},
                 )
         except IntegrityError:
             if User.objects.filter(email=email).exists():
