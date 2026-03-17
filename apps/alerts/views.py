@@ -13,6 +13,7 @@ from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema, extend_schema_view
 from rest_framework import status
 from rest_framework.generics import ListAPIView
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -20,6 +21,7 @@ from rest_framework.views import APIView
 from apps.alerts.models import Alert
 from apps.alerts.serializers import AlertSerializer
 from apps.audit.models import AuditLog
+from apps.users.permissions import IsAdminOrOwner
 
 
 @extend_schema_view(
@@ -42,23 +44,22 @@ class AlertListView(ListAPIView):
     """
     GET /api/v1/alerts/
 
-    Return a paginated list of all Alert records, newest first.
+    Return a paginated list of Alert records for the authenticated user's
+    organization, newest first.
 
     Optional query parameters:
-        ?organization_id=<uuid>   — filter by organisation
-        ?alert_type=<str>         — filter by analyzer key (e.g. 'large_transaction')
-        ?severity=<str>           — filter by severity (LOW / MEDIUM / HIGH)
-        ?status=<str>             — filter by status  (OPEN / ACKNOWLEDGED / RESOLVED)
+        ?alert_type=<str>   — filter by analyzer key (e.g. 'large_transaction')
+        ?severity=<str>     — filter by severity (LOW / MEDIUM / HIGH)
+        ?status=<str>       — filter by status  (OPEN / ACKNOWLEDGED / RESOLVED)
     """
 
+    permission_classes = [IsAuthenticated]
     serializer_class = AlertSerializer
 
     def get_queryset(self):
-        qs = Alert.objects.select_related("organization").all()
-
-        org_id = self.request.query_params.get("organization_id")
-        if org_id:
-            qs = qs.filter(organization_id=org_id)
+        qs = Alert.objects.select_related("organization").filter(
+            organization_id=self.request.user.organization_id
+        )
 
         alert_type = self.request.query_params.get("alert_type")
         if alert_type:
@@ -83,7 +84,10 @@ class AlertAcknowledgeView(APIView):
 
     Only OPEN alerts may be acknowledged.  Attempting to acknowledge an
     already-acknowledged or resolved alert returns HTTP 409 Conflict.
+    Requires admin or owner role.
     """
+
+    permission_classes = [IsAdminOrOwner]
 
     @extend_schema(
         tags=["Alerts"],
@@ -102,7 +106,10 @@ class AlertAcknowledgeView(APIView):
     )
     def post(self, request: Request, pk) -> Response:
         with transaction.atomic():
-            alert = get_object_or_404(Alert.objects.select_for_update(), pk=pk)
+            alert = get_object_or_404(
+                Alert.objects.filter(organization_id=request.user.organization_id).select_for_update(),
+                pk=pk,
+            )
 
             if alert.status != Alert.Status.OPEN:
                 return Response(
@@ -134,7 +141,10 @@ class AlertResolveView(APIView):
     Transition an alert from OPEN or ACKNOWLEDGED → RESOLVED.
 
     Attempting to resolve an already-resolved alert returns HTTP 409 Conflict.
+    Requires admin or owner role.
     """
+
+    permission_classes = [IsAdminOrOwner]
 
     @extend_schema(
         tags=["Alerts"],
@@ -153,7 +163,10 @@ class AlertResolveView(APIView):
     )
     def post(self, request: Request, pk) -> Response:
         with transaction.atomic():
-            alert = get_object_or_404(Alert.objects.select_for_update(), pk=pk)
+            alert = get_object_or_404(
+                Alert.objects.filter(organization_id=request.user.organization_id).select_for_update(),
+                pk=pk,
+            )
 
             if alert.status == Alert.Status.RESOLVED:
                 return Response(

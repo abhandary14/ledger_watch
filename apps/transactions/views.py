@@ -7,6 +7,7 @@ Thin views — all business logic lives in TransactionService.
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema, extend_schema_view, inline_serializer
 from rest_framework import serializers, status
 from rest_framework.generics import ListAPIView, RetrieveAPIView
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -20,15 +21,17 @@ class TransactionImportView(APIView):
     """
     POST /api/v1/transactions/import
 
-    Bulk-import a list of transactions for an organization.
+    Bulk-import a list of transactions for the authenticated user's organization.
     """
+
+    permission_classes = [IsAuthenticated]
 
     @extend_schema(
         tags=["Transactions"],
         summary="Bulk import transactions",
         description=(
-            "Atomically imports a list of transactions for the given organization. "
-            "All rows are validated before any are persisted. "
+            "Atomically imports a list of transactions for the authenticated user's "
+            "organization. All rows are validated before any are persisted. "
             "An audit log entry is written on success."
         ),
         request=TransactionImportSerializer,
@@ -44,7 +47,7 @@ class TransactionImportView(APIView):
         serializer = TransactionImportSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        org_id = serializer.validated_data["organization_id"]
+        org_id = request.user.organization_id
         tx_data = serializer.validated_data["transactions"]
 
         created = TransactionService.bulk_import(str(org_id), tx_data)
@@ -75,15 +78,19 @@ class TransactionListView(ListAPIView):
     """
     GET /api/v1/transactions/
 
-    Paginated list of all transactions. Supports filtering via query params:
+    Paginated list of all transactions for the authenticated user's organization.
+    Supports filtering via query params:
       ?vendor=    ?category=    ?date_from=YYYY-MM-DD    ?date_to=YYYY-MM-DD
     """
 
+    permission_classes = [IsAuthenticated]
     serializer_class = TransactionSerializer
     filterset_class = TransactionFilter
 
     def get_queryset(self):
-        return Transaction.objects.select_related("organization").all()
+        return Transaction.objects.select_related("organization").filter(
+            organization_id=self.request.user.organization_id
+        )
 
 
 @extend_schema_view(
@@ -101,8 +108,13 @@ class TransactionDetailView(RetrieveAPIView):
     """
     GET /api/v1/transactions/{id}/
 
-    Retrieve a single transaction by its UUID.
+    Retrieve a single transaction by its UUID, scoped to the user's organization.
     """
 
+    permission_classes = [IsAuthenticated]
     serializer_class = TransactionSerializer
-    queryset = Transaction.objects.select_related("organization").all()
+
+    def get_queryset(self):
+        return Transaction.objects.select_related("organization").filter(
+            organization_id=self.request.user.organization_id
+        )

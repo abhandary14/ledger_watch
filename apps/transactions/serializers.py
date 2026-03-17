@@ -14,14 +14,9 @@ def validate_positive_amount(value):
 
 
 class TransactionSerializer(serializers.ModelSerializer):
-    """
-    Serializes / deserializes a single Transaction.
+    """Read serializer for a single Transaction."""
 
-    ``organization`` is exposed as a write-only UUID field on input so callers
-    supply the org ID directly.  On output it is rendered as the UUID string.
-    """
-
-    organization_id = serializers.UUIDField(write_only=True)
+    organization_id = serializers.UUIDField(source="organization.id", read_only=True)
 
     class Meta:
         model = Transaction
@@ -35,7 +30,7 @@ class TransactionSerializer(serializers.ModelSerializer):
             "category",
             "created_at",
         ]
-        read_only_fields = ["id", "created_at"]
+        read_only_fields = fields
 
     def validate_amount(self, value):
         return validate_positive_amount(value)
@@ -64,12 +59,13 @@ class TransactionImportSerializer(serializers.Serializer):
 
     Expected request body:
         {
-            "organization_id": "<uuid>",
             "transactions": [ { ...transaction fields... }, ... ]
         }
+
+    ``organization_id`` is no longer accepted in the body — it is derived
+    from the authenticated user's organization.
     """
 
-    organization_id = serializers.UUIDField()
     transactions = TransactionRowSerializer(many=True)
 
     def validate_transactions(self, value):

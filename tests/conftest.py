@@ -6,11 +6,12 @@ from rest_framework.test import APIClient
 
 from apps.organizations.models import Organization
 from apps.transactions.models import Transaction
+from apps.users.models import User
 
 
 @pytest.fixture
 def api_client():
-    """Return a DRF APIClient for use in tests."""
+    """Return an unauthenticated DRF APIClient."""
     return APIClient()
 
 
@@ -24,6 +25,36 @@ def org(db):
 def org2(db):
     """Return a second saved Organization instance (for isolation tests)."""
     return Organization.objects.create(name="Other Corp")
+
+
+@pytest.fixture
+def user(org):
+    """Return an owner User linked to org."""
+    return User.objects.create_user(
+        email="owner@testcorp.com",
+        password="testpassword123",
+        organization=org,
+        role=User.Role.OWNER,
+    )
+
+
+@pytest.fixture
+def user2(org2):
+    """Return an owner User linked to org2."""
+    return User.objects.create_user(
+        email="owner@othercorp.com",
+        password="testpassword123",
+        organization=org2,
+        role=User.Role.OWNER,
+    )
+
+
+@pytest.fixture
+def auth_client(user):
+    """Return an APIClient authenticated as the org owner."""
+    client = APIClient()
+    client.force_authenticate(user=user)
+    return client
 
 
 @pytest.fixture
