@@ -4,9 +4,7 @@
 //
 // JENKINS CONTAINER SETUP (one-time, before running this pipeline)
 // ----------------------------------------------------------------
-// Start Jenkins with the Docker socket mounted AND a named volume so that
-// WORKSPACE paths are accessible to the host Docker daemon (required for
-// the -v "${WORKSPACE}:/app" volume mounts used in Lint and Test stages):
+// Start Jenkins with the Docker socket mounted:
 //
 //   docker run -d \
 //     --name jenkins \
@@ -47,11 +45,6 @@ pipeline {
         // Credentials are masked in logs; values injected from Jenkins credential store
         SECRET_KEY   = credentials('LEDGERWATCH_SECRET_KEY')
         DB_PASSWORD  = credentials('LEDGERWATCH_DB_PASSWORD')
-        // On Docker Desktop the Jenkins container's WORKSPACE path is not directly
-        // usable as a host volume mount. Set JENKINS_HOST_WORKSPACE in the Jenkins
-        // node/agent config to the equivalent host path; falls back to WORKSPACE
-        // for Linux agents where the paths are identical.
-        HOST_WORKSPACE = "${env.JENKINS_HOST_WORKSPACE ?: env.WORKSPACE}"
     }
 
     options {
@@ -71,16 +64,24 @@ pipeline {
 
         // ── 2. Lint ────────────────────────────────────────────────────────────
         // Runs ruff inside a throw-away python:3.12-slim container.
-        // The workspace is mounted read-only so no files can be modified.
+        // Uses docker cp instead of bind mounts so this works reliably in
+        // Docker-in-Docker setups (e.g. Jenkins in a container on Docker Desktop).
         // Fails fast: any lint error aborts the pipeline before tests run.
         stage('Lint') {
             steps {
                 sh """
-                    docker run --rm \\
-                        -v "${HOST_WORKSPACE}:/app:ro" -w /app \\
+                    docker create --name lint-${BUILD_NUMBER} \\
+                        -w /app \\
                         python:3.12-slim \\
                         sh -c "pip install --quiet 'ruff>=0.6,<0.7' && ruff check --no-cache ."
                 """
+                sh """docker cp "${WORKSPACE}/." lint-${BUILD_NUMBER}:/app/"""
+                sh "docker start -a lint-${BUILD_NUMBER}"
+            }
+            post {
+                always {
+                    sh "docker rm -f lint-${BUILD_NUMBER} || true"
+                }
             }
         }
 
@@ -122,12 +123,13 @@ pipeline {
                 """
 
                 // 4. Install dependencies and run the full test suite.
+                //    Uses docker cp instead of bind mounts (Docker-in-Docker safe).
                 //    DB_HOST is the name of the postgres container — Docker's internal
                 //    DNS resolves it because both containers share CI_NETWORK.
                 sh """
-                    docker run --rm \\
+                    docker create --name test-runner-${BUILD_NUMBER} \\
                         --network ${CI_NETWORK} \\
-                        -v "${HOST_WORKSPACE}:/app" -w /app \\
+                        -w /app \\
                         -e SECRET_KEY="${SECRET_KEY}" \\
                         -e DEBUG=True \\
                         -e ALLOWED_HOSTS=localhost \\
@@ -144,11 +146,14 @@ pipeline {
                             && pytest --tb=short \\
                         "
                 """
+                sh """docker cp "${WORKSPACE}/." test-runner-${BUILD_NUMBER}:/app/"""
+                sh "docker start -a test-runner-${BUILD_NUMBER}"
             }
 
             post {
                 always {
                     // Tear down CI resources regardless of pass/fail
+                    sh "docker rm -f test-runner-${BUILD_NUMBER} || true"
                     sh "docker rm -f ${CI_DB} || true"
                     sh "docker network rm ${CI_NETWORK} || true"
                 }
@@ -188,12 +193,12 @@ pipeline {
                         "DB_PORT=5432",
                     ].join('\n') + '\n'
                 }
-                sh 'docker compose up -d postgres'
+                sh 'docker compose -f docker-compose.yml up -d postgres'
                 // Wait for postgres to be ready
                 sh """
                     ready=0
                     for i in \$(seq 1 30); do
-                        docker compose exec postgres pg_isready -U ledger -d ledgerwatch && ready=1 && break || true
+                        docker compose -f docker-compose.yml exec postgres pg_isready -U ledger -d ledgerwatch && ready=1 && break || true
                         echo "  postgres not ready yet (\$i/30)..."
                         sleep 2
                     done
@@ -225,7 +230,7 @@ pipeline {
         // only containers whose image changed are recreated.
         stage('Deploy') {
             steps {
-                sh "docker compose up -d --no-build"
+                sh "docker compose -f docker-compose.yml up -d --no-build"
                 echo "Deployed — API: http://localhost:8000 | Docs: http://localhost:8000/api/docs/"
             }
         }

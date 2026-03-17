@@ -1,0 +1,7 @@
+# Local development overrides — loaded automatically by `docker compose up`.
+# Mounts the project directory into the container for live code reloading.
+# CI pipelines use `docker compose -f docker-compose.yml` to skip this file.
+services:
+  api:
+    volumes:
+      - .:/app
