@@ -220,4 +220,4 @@ postman/
 /agent_team_instructions.json
 observations/
 /plan_frontend.md
-.claude/
+/.claude/
