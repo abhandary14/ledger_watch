@@ -73,10 +73,19 @@ apiClient.interceptors.response.use(
         originalRequest.headers = originalRequest.headers ?? {}
         originalRequest.headers['Authorization'] = `Bearer ${newToken}`
         return apiClient(originalRequest)
-      } catch {
-        setAccessToken(null)
-        localStorage.removeItem('refresh_token')
-        window.location.href = '/login'
+      } catch (refreshError) {
+        // Only clear session for actual auth failures (bad/expired refresh token)
+        // or when no token exists. Network errors and 5xx should not force logout.
+        const noToken =
+          refreshError instanceof Error &&
+          refreshError.message === 'No refresh token stored'
+        const isAuthFailure =
+          axios.isAxiosError(refreshError) && refreshError.response?.status === 401
+        if (noToken || isAuthFailure) {
+          setAccessToken(null)
+          localStorage.removeItem('refresh_token')
+          window.location.href = '/login'
+        }
         return Promise.reject(error)
       }
     }

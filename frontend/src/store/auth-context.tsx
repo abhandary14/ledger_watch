@@ -5,6 +5,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
+import axios from 'axios'
 import { setAccessToken } from '@/api/client'
 import { getMeApi, loginApi, logoutApi, registerApi, type MeResponse } from '@/api/auth'
 
@@ -37,10 +38,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const { data } = await getMeApi()
         setUser(data)
-      } catch {
-        // Refresh token expired or invalid — clear storage.
-        localStorage.removeItem('refresh_token')
-        setAccessToken(null)
+      } catch (err) {
+        // Only clear tokens for actual auth failures. Transient network errors
+        // or 5xx responses should not log the user out.
+        const status = axios.isAxiosError(err) ? err.response?.status : undefined
+        if (status === 401 || status === 403) {
+          localStorage.removeItem('refresh_token')
+          setAccessToken(null)
+        }
       } finally {
         setIsLoading(false)
       }
