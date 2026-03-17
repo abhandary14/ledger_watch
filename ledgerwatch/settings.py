@@ -4,6 +4,7 @@ All sensitive values are loaded from environment variables (see config/.env.exam
 """
 
 import os
+from datetime import timedelta
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -37,15 +38,20 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     # Third-party
     "rest_framework",
+    "rest_framework_simplejwt",
+    "rest_framework_simplejwt.token_blacklist",
     "django_filters",
     "drf_spectacular",
-    # Local apps (registered in Phase 2)
+    # Local apps
+    "apps.users",
     "apps.organizations",
     "apps.transactions",
     "apps.analytics",
     "apps.alerts",
     "apps.audit",
 ]
+
+AUTH_USER_MODEL = "users.User"
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
@@ -123,11 +129,24 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # ---------------------------------------------------------------------------
 REST_FRAMEWORK = {
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
+    ],
     "DEFAULT_FILTER_BACKENDS": ["django_filters.rest_framework.DjangoFilterBackend"],
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 50,
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
     "DEFAULT_PARSER_CLASSES": ["rest_framework.parsers.JSONParser"],
+}
+
+# ---------------------------------------------------------------------------
+# Simple JWT
+# ---------------------------------------------------------------------------
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
 }
 
 # ---------------------------------------------------------------------------
@@ -140,8 +159,11 @@ SPECTACULAR_SETTINGS = {
         "and risk monitoring. It ingests synthetic business transactions, runs pluggable "
         "analysis engines (large transactions, burn rate, vendor spikes, duplicates), and "
         "generates severity-ranked alerts.\n\n"
-        "All data is scoped to an **Organization** (multi-tenant). Pass `organization_id` "
-        "explicitly in request bodies — there is no JWT authentication in the MVP.\n\n"
+        "All data is scoped to the authenticated user's **Organization** (multi-tenant). "
+        "Use `POST /api/v1/auth/register` to create an account, then authenticate via "
+        "`POST /api/v1/auth/login` to receive a JWT pair. Pass the access token as "
+        "`Authorization: Bearer <token>` on all subsequent requests — organization context "
+        "is derived from the token automatically.\n\n"
         "**Docs:** `/api/docs/` (Swagger UI) · `/api/redoc/` (ReDoc) · `/api/schema/` (raw YAML)"
     ),
     "VERSION": "1.0.0",

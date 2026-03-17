@@ -20,31 +20,35 @@ def open_alert(org):
 
 @pytest.mark.django_db
 class TestAlertListAPI:
-    def test_returns_200(self, api_client):
-        response = api_client.get(ALERTS_URL)
+    def test_returns_200(self, auth_client):
+        response = auth_client.get(ALERTS_URL)
         assert response.status_code == 200
 
-    def test_returns_alert_in_list(self, api_client, open_alert):
+    def test_unauthenticated_returns_401(self, api_client):
         response = api_client.get(ALERTS_URL)
+        assert response.status_code == 401
+
+    def test_returns_alert_in_list(self, auth_client, open_alert):
+        response = auth_client.get(ALERTS_URL)
         assert response.status_code == 200
         results = response.data.get("results", response.data)
         alert_ids = [str(a["id"]) for a in results]
         assert str(open_alert.id) in alert_ids
 
-    def test_filter_by_organization_id(self, api_client, org, org2, open_alert):
+    def test_only_returns_own_org_alerts(self, auth_client, user2, org2, open_alert):
         Alert.objects.create(
             organization=org2,
             alert_type="burn_rate",
             severity=Alert.Severity.LOW,
             message="Org2 alert",
         )
-        response = api_client.get(ALERTS_URL, {"organization_id": str(org.id)})
+        response = auth_client.get(ALERTS_URL)
         assert response.status_code == 200
         results = response.data.get("results", response.data)
         for alert in results:
-            assert str(alert["organization_id"]) == str(org.id)
+            assert alert["message"] != "Org2 alert"
 
-    def test_filter_by_severity(self, api_client, org):
+    def test_filter_by_severity(self, auth_client, org):
         Alert.objects.create(
             organization=org, alert_type="large_transaction",
             severity=Alert.Severity.HIGH, message="High alert"
@@ -53,13 +57,13 @@ class TestAlertListAPI:
             organization=org, alert_type="duplicate",
             severity=Alert.Severity.LOW, message="Low alert"
         )
-        response = api_client.get(ALERTS_URL, {"severity": "HIGH"})
+        response = auth_client.get(ALERTS_URL, {"severity": "HIGH"})
         assert response.status_code == 200
         results = response.data.get("results", response.data)
         for alert in results:
             assert alert["severity"] == "HIGH"
 
-    def test_filter_by_status(self, api_client, org, open_alert):
+    def test_filter_by_status(self, auth_client, org, open_alert):
         Alert.objects.create(
             organization=org,
             alert_type="burn_rate",
@@ -67,7 +71,7 @@ class TestAlertListAPI:
             message="Resolved alert",
             status=Alert.Status.RESOLVED,
         )
-        response = api_client.get(ALERTS_URL, {"status": "OPEN"})
+        response = auth_client.get(ALERTS_URL, {"status": "OPEN"})
         assert response.status_code == 200
         results = response.data.get("results", response.data)
         for alert in results:
@@ -76,24 +80,45 @@ class TestAlertListAPI:
 
 @pytest.mark.django_db
 class TestAlertAcknowledgeAPI:
-    def test_acknowledge_open_alert_returns_200(self, api_client, open_alert):
+    def test_acknowledge_open_alert_returns_200(self, auth_client, open_alert):
         url = f"/api/v1/alerts/{open_alert.id}/acknowledge"
-        response = api_client.post(url, format="json")
+        response = auth_client.post(url, format="json")
         assert response.status_code == 200
 
-    def test_acknowledge_updates_status_to_acknowledged(self, api_client, open_alert):
+    def test_unauthenticated_returns_401(self, api_client, open_alert):
         url = f"/api/v1/alerts/{open_alert.id}/acknowledge"
-        api_client.post(url, format="json")
+        response = api_client.post(url, format="json")
+        assert response.status_code == 401
+
+    def test_employee_cannot_acknowledge(self, org, open_alert):
+        from apps.users.models import User
+        from rest_framework.test import APIClient
+
+        employee = User.objects.create_user(
+            email="employee@testcorp.com",
+            password="testpassword123",
+            organization=org,
+            role=User.Role.EMPLOYEE,
+        )
+        client = APIClient()
+        client.force_authenticate(user=employee)
+        url = f"/api/v1/alerts/{open_alert.id}/acknowledge"
+        response = client.post(url, format="json")
+        assert response.status_code == 403
+
+    def test_acknowledge_updates_status_to_acknowledged(self, auth_client, open_alert):
+        url = f"/api/v1/alerts/{open_alert.id}/acknowledge"
+        auth_client.post(url, format="json")
         open_alert.refresh_from_db()
         assert open_alert.status == Alert.Status.ACKNOWLEDGED
 
-    def test_acknowledge_returns_updated_alert_data(self, api_client, open_alert):
+    def test_acknowledge_returns_updated_alert_data(self, auth_client, open_alert):
         url = f"/api/v1/alerts/{open_alert.id}/acknowledge"
-        response = api_client.post(url, format="json")
+        response = auth_client.post(url, format="json")
         assert response.data["status"] == "ACKNOWLEDGED"
         assert str(response.data["id"]) == str(open_alert.id)
 
-    def test_acknowledge_already_acknowledged_returns_409(self, api_client, org):
+    def test_acknowledge_already_acknowledged_returns_409(self, auth_client, org):
         alert = Alert.objects.create(
             organization=org,
             alert_type="duplicate",
@@ -102,29 +127,34 @@ class TestAlertAcknowledgeAPI:
             status=Alert.Status.ACKNOWLEDGED,
         )
         url = f"/api/v1/alerts/{alert.id}/acknowledge"
-        response = api_client.post(url, format="json")
+        response = auth_client.post(url, format="json")
         assert response.status_code == 409
 
-    def test_acknowledge_nonexistent_alert_returns_404(self, api_client):
+    def test_acknowledge_nonexistent_alert_returns_404(self, auth_client):
         url = f"/api/v1/alerts/{uuid.uuid4()}/acknowledge"
-        response = api_client.post(url, format="json")
+        response = auth_client.post(url, format="json")
         assert response.status_code == 404
 
 
 @pytest.mark.django_db
 class TestAlertResolveAPI:
-    def test_resolve_open_alert_returns_200(self, api_client, open_alert):
+    def test_resolve_open_alert_returns_200(self, auth_client, open_alert):
         url = f"/api/v1/alerts/{open_alert.id}/resolve"
-        response = api_client.post(url, format="json")
+        response = auth_client.post(url, format="json")
         assert response.status_code == 200
 
-    def test_resolve_updates_status_to_resolved(self, api_client, open_alert):
+    def test_unauthenticated_returns_401(self, api_client, open_alert):
         url = f"/api/v1/alerts/{open_alert.id}/resolve"
-        api_client.post(url, format="json")
+        response = api_client.post(url, format="json")
+        assert response.status_code == 401
+
+    def test_resolve_updates_status_to_resolved(self, auth_client, open_alert):
+        url = f"/api/v1/alerts/{open_alert.id}/resolve"
+        auth_client.post(url, format="json")
         open_alert.refresh_from_db()
         assert open_alert.status == Alert.Status.RESOLVED
 
-    def test_resolve_acknowledged_alert_returns_200(self, api_client, org):
+    def test_resolve_acknowledged_alert_returns_200(self, auth_client, org):
         alert = Alert.objects.create(
             organization=org,
             alert_type="vendor_spike",
@@ -133,12 +163,12 @@ class TestAlertResolveAPI:
             status=Alert.Status.ACKNOWLEDGED,
         )
         url = f"/api/v1/alerts/{alert.id}/resolve"
-        response = api_client.post(url, format="json")
+        response = auth_client.post(url, format="json")
         assert response.status_code == 200
         alert.refresh_from_db()
         assert alert.status == Alert.Status.RESOLVED
 
-    def test_resolve_already_resolved_returns_409(self, api_client, org):
+    def test_resolve_already_resolved_returns_409(self, auth_client, org):
         alert = Alert.objects.create(
             organization=org,
             alert_type="burn_rate",
@@ -147,15 +177,15 @@ class TestAlertResolveAPI:
             status=Alert.Status.RESOLVED,
         )
         url = f"/api/v1/alerts/{alert.id}/resolve"
-        response = api_client.post(url, format="json")
+        response = auth_client.post(url, format="json")
         assert response.status_code == 409
 
-    def test_resolve_returns_updated_alert_data(self, api_client, open_alert):
+    def test_resolve_returns_updated_alert_data(self, auth_client, open_alert):
         url = f"/api/v1/alerts/{open_alert.id}/resolve"
-        response = api_client.post(url, format="json")
+        response = auth_client.post(url, format="json")
         assert response.data["status"] == "RESOLVED"
 
-    def test_resolve_nonexistent_alert_returns_404(self, api_client):
+    def test_resolve_nonexistent_alert_returns_404(self, auth_client):
         url = f"/api/v1/alerts/{uuid.uuid4()}/resolve"
-        response = api_client.post(url, format="json")
+        response = auth_client.post(url, format="json")
         assert response.status_code == 404

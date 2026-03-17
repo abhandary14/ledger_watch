@@ -20,14 +20,13 @@ class AnalysisRunRequestSerializer(serializers.Serializer):
     Expected JSON::
 
         {
-            "organization_id": "<uuid>",
             "analysis_type": "large_transaction"
         }
+
+    ``organization_id`` is no longer accepted in the body — it is derived
+    from the authenticated user's organization.
     """
 
-    organization_id = serializers.UUIDField(
-        help_text="UUID of the organization to run the analysis against.",
-    )
     analysis_type = serializers.ChoiceField(
         choices=AnalyzerFactory.available(),
         help_text=(
