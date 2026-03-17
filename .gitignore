@@ -221,3 +221,4 @@ postman/
 observations/
 /plan_frontend.md
 .claude/
+/frontend/.env
