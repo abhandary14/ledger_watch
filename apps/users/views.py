@@ -1,4 +1,5 @@
 from django.contrib.auth import authenticate
+from django.core.exceptions import PermissionDenied
 from django.db import IntegrityError, transaction as db_transaction
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
@@ -48,8 +49,8 @@ class RegisterView(APIView):
                     event_type="USER_REGISTERED",
                     metadata={"user_email": email},
                 )
-        except IntegrityError as e:
-            if "email" in str(e).lower():
+        except IntegrityError:
+            if User.objects.filter(email=email).exists():
                 return Response(
                     {"email": ["A user with this email already exists."]},
                     status=status.HTTP_400_BAD_REQUEST,
@@ -112,6 +113,8 @@ class LogoutView(APIView):
 
         try:
             token = RefreshToken(serializer.validated_data["refresh"])
+            if str(token["user_id"]) != str(request.user.id):
+                raise PermissionDenied("This refresh token does not belong to you.")
             token.blacklist()
         except TokenError:
             return Response(

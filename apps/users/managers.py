@@ -21,8 +21,8 @@ class UserManager(BaseUserManager):
         if not isinstance(org, Organization):
             try:
                 extra_fields["organization"] = Organization.objects.get(pk=org)
-            except Organization.DoesNotExist:
-                raise ValueError(f"Organization with pk={org!r} does not exist.")
+            except Organization.DoesNotExist as err:
+                raise ValueError(f"Organization with pk={org!r} does not exist.") from err
         extra_fields.setdefault("is_staff", True)
         extra_fields.setdefault("is_superuser", True)
         if not extra_fields.get("is_staff"):
