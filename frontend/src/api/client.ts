@@ -38,6 +38,7 @@ async function doTokenRefresh(): Promise<string> {
   const { data } = await axios.post<{ access: string; refresh?: string }>(
     `${BASE_URL}/api/v1/auth/token/refresh`,
     { refresh },
+    { timeout: 10_000 },
   )
 
   setAccessToken(data.access)

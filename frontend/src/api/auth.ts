@@ -36,7 +36,7 @@ export function registerApi(payload: RegisterPayload) {
 }
 
 export function logoutApi(refresh: string) {
-  return apiClient.post('/api/v1/auth/logout', { refresh })
+  return apiClient.post<void>('/api/v1/auth/logout', { refresh })
 }
 
 export function getMeApi() {

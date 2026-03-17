@@ -18,7 +18,7 @@ interface AuthContextValue {
   register: (email: string, password: string, orgName: string) => Promise<void>
 }
 
-export const AuthContext = createContext<AuthContextValue>({} as AuthContextValue)
+export const AuthContext = createContext<AuthContextValue | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<MeResponse | null>(null)

@@ -57,6 +57,10 @@ export function SignupPage() {
           form.setError('password', { message: apiErrors.password[0] })
           return
         }
+        if (apiErrors.organization_name?.[0]) {
+          form.setError('organizationName', { message: apiErrors.organization_name[0] })
+          return
+        }
       }
       toast.error('Registration failed. Please try again.')
     } finally {
