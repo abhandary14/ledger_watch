@@ -7,7 +7,7 @@ import {
 } from 'react'
 import axios from 'axios'
 import { setAccessToken } from '@/api/client'
-import { getMeApi, loginApi, logoutApi, registerApi, type MeResponse } from '@/api/auth'
+import { getMeApi, loginApi, logoutApi, registerApi, type MeResponse, type TokenResponse } from '@/api/auth'
 
 interface AuthContextValue {
   user: MeResponse | null
@@ -54,13 +54,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     restore()
   }, [])
 
+  // Sets the in-memory access token, fetches the user, then — only on success —
+  // persists the refresh token. Cleans up and rethrows on any failure so callers
+  // see the error and no partial state is left behind.
+  const bootstrapSession = useCallback(async (tokens: TokenResponse) => {
+    setAccessToken(tokens.access)
+    try {
+      const { data: me } = await getMeApi()
+      localStorage.setItem('refresh_token', tokens.refresh)
+      setUser(me)
+    } catch (err) {
+      setAccessToken(null)
+      throw err
+    }
+  }, [])
+
   const login = useCallback(async (email: string, password: string) => {
     const { data: tokens } = await loginApi({ email, password })
-    setAccessToken(tokens.access)
-    localStorage.setItem('refresh_token', tokens.refresh)
-    const { data: me } = await getMeApi()
-    setUser(me)
-  }, [])
+    await bootstrapSession(tokens)
+  }, [bootstrapSession])
 
   const logout = useCallback(async () => {
     const refresh = localStorage.getItem('refresh_token')
@@ -83,12 +95,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         password,
         organization_name: orgName,
       })
-      setAccessToken(tokens.access)
-      localStorage.setItem('refresh_token', tokens.refresh)
-      const { data: me } = await getMeApi()
-      setUser(me)
+      await bootstrapSession(tokens)
     },
-    [],
+    [bootstrapSession],
   )
 
   return (
