@@ -53,6 +53,10 @@ export function SignupPage() {
           form.setError('email', { message: apiErrors.email[0] })
           return
         }
+        if (apiErrors.password?.[0]) {
+          form.setError('password', { message: apiErrors.password[0] })
+          return
+        }
       }
       toast.error('Registration failed. Please try again.')
     } finally {
