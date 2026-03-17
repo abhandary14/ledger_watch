@@ -33,7 +33,6 @@ from apps.users.permissions import IsAdminOrOwner
             "Alerts are created automatically after each analysis run."
         ),
         parameters=[
-            OpenApiParameter("organization_id", str, description="Filter by organization UUID."),
             OpenApiParameter("alert_type", str, description="Filter by analyzer key (e.g. `large_transaction`)."),
             OpenApiParameter("severity", str, description="Filter by severity: `LOW`, `MEDIUM`, or `HIGH`."),
             OpenApiParameter("status", str, description="Filter by status: `OPEN`, `ACKNOWLEDGED`, or `RESOLVED`."),

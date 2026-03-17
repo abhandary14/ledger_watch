@@ -40,9 +40,8 @@ class TransactionRowSerializer(serializers.ModelSerializer):
     """
     Validates a single row inside a bulk-import request body.
 
-    Identical to TransactionSerializer but omits ``organization_id`` — the
-    org is supplied once at the top level of the import payload, not repeated
-    per row.
+    ``organization_id`` is not accepted here — it is derived from the
+    authenticated user's organization, not from the request body.
     """
 
     class Meta:

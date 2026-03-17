@@ -63,7 +63,8 @@ class TransactionImportView(APIView):
         tags=["Transactions"],
         summary="List transactions",
         description=(
-            "Returns a paginated list of all transactions (newest first). "
+            "Returns a paginated list of transactions for the authenticated user's "
+            "organization (newest first). "
             "Supports filtering by vendor, category, and date range."
         ),
         parameters=[

@@ -1,5 +1,5 @@
 from django.contrib.auth import authenticate
-from django.db import transaction as db_transaction
+from django.db import IntegrityError, transaction as db_transaction
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
@@ -24,7 +24,7 @@ class RegisterView(APIView):
         serializer = RegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        email = serializer.validated_data["email"]
+        email = User.objects.normalize_email(serializer.validated_data["email"])
         password = serializer.validated_data["password"]
         org_name = serializer.validated_data["organization_name"]
 
@@ -34,18 +34,24 @@ class RegisterView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        with db_transaction.atomic():
-            org = Organization.objects.create(name=org_name)
-            user = User.objects.create_user(
-                email=email,
-                password=password,
-                organization=org,
-                role=User.Role.OWNER,
-            )
-            AuditLog.objects.create(
-                organization=org,
-                event_type="USER_REGISTERED",
-                metadata={"user_email": email},
+        try:
+            with db_transaction.atomic():
+                org = Organization.objects.create(name=org_name)
+                user = User.objects.create_user(
+                    email=email,
+                    password=password,
+                    organization=org,
+                    role=User.Role.OWNER,
+                )
+                AuditLog.objects.create(
+                    organization=org,
+                    event_type="USER_REGISTERED",
+                    metadata={"user_email": email},
+                )
+        except IntegrityError:
+            return Response(
+                {"email": ["A user with this email already exists."]},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         refresh = RefreshToken.for_user(user)

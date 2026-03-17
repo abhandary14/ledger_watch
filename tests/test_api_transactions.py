@@ -2,11 +2,14 @@ import pytest
 from decimal import Decimal
 from datetime import date
 
+from rest_framework.test import APIClient
+
 from apps.transactions.models import Transaction
 
 
 IMPORT_URL = "/api/v1/transactions/import"
 LIST_URL = "/api/v1/transactions/"
+LOGIN_URL = "/api/v1/auth/login"
 
 
 @pytest.mark.django_db
@@ -56,6 +59,15 @@ class TestTransactionImportAPI:
         }
         response = api_client.post(IMPORT_URL, payload, format="json")
         assert response.status_code == 401
+
+    def test_valid_import_with_bearer_token(self, user):
+        """End-to-end JWT auth: obtain a real token via login and use it as a Bearer header."""
+        client = APIClient()
+        login = client.post(LOGIN_URL, {"email": user.email, "password": "testpassword123"}, format="json")
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {login.data['access']}")
+        payload = {"transactions": [{"date": "2026-01-10", "vendor": "BearerTest", "amount": "99.00"}]}
+        response = client.post(IMPORT_URL, payload, format="json")
+        assert response.status_code == 201
 
     def test_empty_transactions_list_returns_400(self, auth_client, org):
         payload = {"transactions": []}

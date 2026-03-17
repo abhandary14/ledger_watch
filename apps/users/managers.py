@@ -12,6 +12,10 @@ class UserManager(BaseUserManager):
         return user
 
     def create_superuser(self, email, password=None, **extra_fields):
+        if not password:
+            raise ValueError("Superuser must have a password.")
+        if not extra_fields.get("organization"):
+            raise ValueError("Superuser must have an organization.")
         extra_fields.setdefault("is_staff", True)
         extra_fields.setdefault("is_superuser", True)
         if not extra_fields.get("is_staff"):

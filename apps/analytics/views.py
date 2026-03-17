@@ -72,9 +72,8 @@ class AnalysisRunView(APIView):
     get=extend_schema(
         tags=["Analysis"],
         summary="List analysis runs",
-        description="Paginated list of all AnalysisRun records, newest first.",
+        description="Paginated list of AnalysisRun records for the authenticated user's organization, newest first.",
         parameters=[
-            OpenApiParameter("organization_id", str, description="Filter by organization UUID."),
             OpenApiParameter("analysis_type", str, description="Filter by analyzer key (e.g. `large_transaction`)."),
             OpenApiParameter("status", str, description="Filter by run status: `PENDING`, `SUCCEEDED`, or `FAILED`."),
         ],

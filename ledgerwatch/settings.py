@@ -159,8 +159,11 @@ SPECTACULAR_SETTINGS = {
         "and risk monitoring. It ingests synthetic business transactions, runs pluggable "
         "analysis engines (large transactions, burn rate, vendor spikes, duplicates), and "
         "generates severity-ranked alerts.\n\n"
-        "All data is scoped to an **Organization** (multi-tenant). Pass `organization_id` "
-        "explicitly in request bodies — there is no JWT authentication in the MVP.\n\n"
+        "All data is scoped to the authenticated user's **Organization** (multi-tenant). "
+        "Use `POST /api/v1/auth/register` to create an account, then authenticate via "
+        "`POST /api/v1/auth/login` to receive a JWT pair. Pass the access token as "
+        "`Authorization: Bearer <token>` on all subsequent requests — organization context "
+        "is derived from the token automatically.\n\n"
         "**Docs:** `/api/docs/` (Swagger UI) · `/api/redoc/` (ReDoc) · `/api/schema/` (raw YAML)"
     ),
     "VERSION": "1.0.0",
