@@ -48,11 +48,13 @@ class RegisterView(APIView):
                     event_type="USER_REGISTERED",
                     metadata={"user_email": email},
                 )
-        except IntegrityError:
-            return Response(
-                {"email": ["A user with this email already exists."]},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        except IntegrityError as e:
+            if "email" in str(e).lower():
+                return Response(
+                    {"email": ["A user with this email already exists."]},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            raise
 
         refresh = RefreshToken.for_user(user)
         return Response(
@@ -79,7 +81,7 @@ class LoginView(APIView):
         serializer = LoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        email = serializer.validated_data["email"]
+        email = User.objects.normalize_email(serializer.validated_data["email"])
         password = serializer.validated_data["password"]
 
         user = authenticate(request, username=email, password=password)

@@ -64,6 +64,8 @@ class TestTransactionImportAPI:
         """End-to-end JWT auth: obtain a real token via login and use it as a Bearer header."""
         client = APIClient()
         login = client.post(LOGIN_URL, {"email": user.email, "password": "testpassword123"}, format="json")
+        assert login.status_code == 200
+        assert "access" in login.data
         client.credentials(HTTP_AUTHORIZATION=f"Bearer {login.data['access']}")
         payload = {"transactions": [{"date": "2026-01-10", "vendor": "BearerTest", "amount": "99.00"}]}
         response = client.post(IMPORT_URL, payload, format="json")
@@ -118,7 +120,11 @@ class TestTransactionListAPI:
         assert "results" in data
         assert isinstance(data["results"], list)
 
-    def test_only_returns_own_org_transactions(self, auth_client, user2, org2):
+    def test_only_returns_own_org_transactions(self, auth_client, user, org, user2, org2):
+        Transaction.objects.create(
+            organization=org, date=date(2026, 1, 10),
+            vendor="MyOrgVendor", amount=Decimal("50.00")
+        )
         Transaction.objects.create(
             organization=org2, date=date(2026, 1, 10),
             vendor="OtherOrgVendor", amount=Decimal("100.00")
@@ -126,7 +132,9 @@ class TestTransactionListAPI:
         response = auth_client.get(LIST_URL)
         assert response.status_code == 200
         results = response.data["results"]
-        assert all(r["vendor"] != "OtherOrgVendor" for r in results)
+        vendors = [r["vendor"] for r in results]
+        assert "MyOrgVendor" in vendors
+        assert "OtherOrgVendor" not in vendors
 
     def test_filter_by_vendor(self, auth_client, org):
         Transaction.objects.create(

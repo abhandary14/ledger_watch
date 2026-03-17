@@ -14,8 +14,15 @@ class UserManager(BaseUserManager):
     def create_superuser(self, email, password=None, **extra_fields):
         if not password:
             raise ValueError("Superuser must have a password.")
-        if not extra_fields.get("organization"):
+        org = extra_fields.get("organization")
+        if not org:
             raise ValueError("Superuser must have an organization.")
+        from apps.organizations.models import Organization
+        if not isinstance(org, Organization):
+            try:
+                extra_fields["organization"] = Organization.objects.get(pk=org)
+            except Organization.DoesNotExist:
+                raise ValueError(f"Organization with pk={org!r} does not exist.")
         extra_fields.setdefault("is_staff", True)
         extra_fields.setdefault("is_superuser", True)
         if not extra_fields.get("is_staff"):
