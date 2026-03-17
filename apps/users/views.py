@@ -7,6 +7,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.settings import api_settings
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.audit.models import AuditLog
@@ -113,7 +114,8 @@ class LogoutView(APIView):
 
         try:
             token = RefreshToken(serializer.validated_data["refresh"])
-            if str(token["user_id"]) != str(request.user.id):
+            token_user_id = token.payload.get(api_settings.USER_ID_CLAIM)
+            if not token_user_id or str(token_user_id) != str(request.user.id):
                 raise PermissionDenied("This refresh token does not belong to you.")
             token.blacklist()
         except TokenError:
