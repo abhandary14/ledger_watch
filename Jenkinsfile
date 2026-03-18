@@ -160,7 +160,86 @@ pipeline {
             }
         }
 
-        // ── 4. Build Image ─────────────────────────────────────────────────────
+        // ── 4. Frontend Install ────────────────────────────────────────────────
+        // Installs frontend dependencies inside a node:20 container.
+        stage('Frontend Install') {
+            steps {
+                sh """
+                    docker create --name fe-install-${BUILD_NUMBER} \\
+                        -w /app \\
+                        node:20-alpine \\
+                        sh -c "npm ci"
+                """
+                sh """docker cp "${WORKSPACE}/frontend/." fe-install-${BUILD_NUMBER}:/app/"""
+                sh "docker start -a fe-install-${BUILD_NUMBER}"
+                sh """rm -rf "${WORKSPACE}/frontend/node_modules" """
+                sh """docker cp fe-install-${BUILD_NUMBER}:/app/node_modules "${WORKSPACE}/frontend/node_modules" """
+            }
+            post {
+                always {
+                    sh "docker rm -f fe-install-${BUILD_NUMBER} || true"
+                }
+            }
+        }
+
+        // ── 5. Frontend Lint ───────────────────────────────────────────────────
+        stage('Frontend Lint') {
+            steps {
+                sh """
+                    docker create --name fe-lint-${BUILD_NUMBER} \\
+                        -w /app \\
+                        node:20-alpine \\
+                        sh -c "npx eslint src/"
+                """
+                sh """docker cp "${WORKSPACE}/frontend/." fe-lint-${BUILD_NUMBER}:/app/"""
+                sh "docker start -a fe-lint-${BUILD_NUMBER}"
+            }
+            post {
+                always {
+                    sh "docker rm -f fe-lint-${BUILD_NUMBER} || true"
+                }
+            }
+        }
+
+        // ── 6. Frontend Test ───────────────────────────────────────────────────
+        stage('Frontend Test') {
+            steps {
+                sh """
+                    docker create --name fe-test-${BUILD_NUMBER} \\
+                        -w /app \\
+                        node:20-alpine \\
+                        sh -c "npx vitest run"
+                """
+                sh """docker cp "${WORKSPACE}/frontend/." fe-test-${BUILD_NUMBER}:/app/"""
+                sh "docker start -a fe-test-${BUILD_NUMBER}"
+            }
+            post {
+                always {
+                    sh "docker rm -f fe-test-${BUILD_NUMBER} || true"
+                }
+            }
+        }
+
+        // ── 7. Frontend Build ──────────────────────────────────────────────────
+        stage('Frontend Build') {
+            steps {
+                sh """
+                    docker create --name fe-build-${BUILD_NUMBER} \\
+                        -w /app \\
+                        node:20-alpine \\
+                        sh -c "npm run build"
+                """
+                sh """docker cp "${WORKSPACE}/frontend/." fe-build-${BUILD_NUMBER}:/app/"""
+                sh "docker start -a fe-build-${BUILD_NUMBER}"
+            }
+            post {
+                always {
+                    sh "docker rm -f fe-build-${BUILD_NUMBER} || true"
+                }
+            }
+        }
+
+        // ── 8. Build Image ─────────────────────────────────────────────────────
         // Builds the production Docker image and tags it with both the build
         // number (immutable, for rollback) and 'latest' (for docker-compose).
         stage('Build Image') {
@@ -174,7 +253,7 @@ pipeline {
             }
         }
 
-        // ── 5. Run Migrations ──────────────────────────────────────────────────
+        // ── 9. Run Migrations ──────────────────────────────────────────────────
         // Writes a temporary config/.env from Jenkins credentials so that
         // docker-compose can source it, then runs Django migrations.
         // The .env file is always deleted in post { always { } } below.
@@ -224,14 +303,15 @@ pipeline {
             }
         }
 
-        // ── 6. Deploy ──────────────────────────────────────────────────────────
+        // ── 10. Deploy ─────────────────────────────────────────────────────────
         // Brings up (or restarts) the full stack with the freshly-built image.
-        // docker compose up -d is idempotent: running containers are left alone,
-        // only containers whose image changed are recreated.
+        // docker compose up -d --build is idempotent: running containers are left alone,
+        // only containers whose image changed are recreated; --build ensures the
+        // frontend image is always rebuilt so changes are picked up on redeployment.
         stage('Deploy') {
             steps {
-                sh "docker compose -f docker-compose.yml up -d --no-build"
-                echo "Deployed — API: http://localhost:8000 | Docs: http://localhost:8000/api/docs/"
+                sh "docker compose -f docker-compose.yml up -d --build"
+                echo "Deployed — App: http://localhost | API: http://localhost:8000 | Docs: http://localhost:8000/api/docs/"
             }
         }
     }

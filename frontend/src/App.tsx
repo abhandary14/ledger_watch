@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from '@/store/auth-context'
 import { ProtectedRoute } from '@/components/ProtectedRoute'
 import { AppLayout } from '@/components/AppLayout'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { LoginPage } from '@/pages/auth/LoginPage'
 import { SignupPage } from '@/pages/auth/SignupPage'
 import { DashboardPage } from '@/pages/app/DashboardPage'
@@ -20,12 +21,12 @@ export function App() {
 
         {/* Protected — all nested inside AppLayout */}
         <Route element={<ProtectedRoute />}>
-          <Route element={<AppLayout />}>
-            <Route path="/dashboard" element={<DashboardPage />} />
-            <Route path="/transactions" element={<TransactionsPage />} />
-            <Route path="/analysis" element={<AnalysisPage />} />
-            <Route path="/alerts" element={<AlertsPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
+          <Route element={<ErrorBoundary><AppLayout /></ErrorBoundary>}>
+            <Route path="/dashboard" element={<ErrorBoundary><DashboardPage /></ErrorBoundary>} />
+            <Route path="/transactions" element={<ErrorBoundary><TransactionsPage /></ErrorBoundary>} />
+            <Route path="/analysis" element={<ErrorBoundary><AnalysisPage /></ErrorBoundary>} />
+            <Route path="/alerts" element={<ErrorBoundary><AlertsPage /></ErrorBoundary>} />
+            <Route path="/settings" element={<ErrorBoundary><SettingsPage /></ErrorBoundary>} />
           </Route>
         </Route>
 
