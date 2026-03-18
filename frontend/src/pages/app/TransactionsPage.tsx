@@ -73,7 +73,7 @@ function isoDate(date: Date): string {
   return date.toISOString().split('T')[0]
 }
 
-const PAGE_SIZE = 50
+const PAGE_SIZE_OPTIONS = ['25', '50', '100', 'all'] as const
 
 // ─── date picker ─────────────────────────────────────────────────────────────
 
@@ -842,6 +842,8 @@ export function TransactionsPage() {
   const urlDateTo = searchParams.get('date_to') ?? ''
   const urlOrdering = searchParams.get('ordering') ?? ''
   const page = parseInt(searchParams.get('page') ?? '1', 10)
+  const pageSizeParam = searchParams.get('page_size') ?? '25'
+  const pageSize = pageSizeParam === 'all' ? 1000 : parseInt(pageSizeParam, 10)
 
   const dateFrom = urlDateFrom ? new Date(urlDateFrom) : undefined
   const dateTo = urlDateTo ? new Date(urlDateTo) : undefined
@@ -919,7 +921,7 @@ export function TransactionsPage() {
   // Build query params
   const queryParams: Record<string, string> = {
     page: String(page),
-    page_size: String(PAGE_SIZE),
+    page_size: String(pageSize),
   }
   if (urlVendor) queryParams.vendor = urlVendor
   if (urlCategory) queryParams.category = urlCategory
@@ -939,12 +941,21 @@ export function TransactionsPage() {
     staleTime: 60_000,
   })
 
-  const totalPages = data ? Math.max(1, Math.ceil(data.count / PAGE_SIZE)) : 1
+  const totalPages = data ? Math.max(1, Math.ceil(data.count / pageSize)) : 1
 
   function setPage(p: number) {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev)
       next.set('page', String(p))
+      return next
+    })
+  }
+
+  function setPageSizeParam(ps: string) {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      next.set('page_size', ps)
+      next.set('page', '1')
       return next
     })
   }
@@ -1106,29 +1117,48 @@ export function TransactionsPage() {
       {/* Pagination */}
       {!isLoading && data && data.count > 0 && (
         <div className="flex items-center justify-between text-sm">
-          <span className="text-muted-foreground">
-            Page {page} of {totalPages}
-          </span>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page <= 1}
-              onClick={() => setPage(page - 1)}
-            >
-              <ChevronLeft className="size-4" />
-              Prev
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page >= totalPages}
-              onClick={() => setPage(page + 1)}
-            >
-              Next
-              <ChevronRight className="size-4" />
-            </Button>
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <span>Rows per page:</span>
+            <Select value={pageSizeParam} onValueChange={setPageSizeParam}>
+              <SelectTrigger className="h-7 w-20 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PAGE_SIZE_OPTIONS.map((o) => (
+                  <SelectItem key={o} value={o}>
+                    {o === 'all' ? 'All' : o}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
+          {pageSizeParam !== 'all' && totalPages > 1 && (
+            <div className="flex items-center gap-3">
+              <span className="text-muted-foreground">
+                Page {page} of {totalPages}
+              </span>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page <= 1}
+                  onClick={() => setPage(page - 1)}
+                >
+                  <ChevronLeft className="size-4" />
+                  Prev
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page >= totalPages}
+                  onClick={() => setPage(page + 1)}
+                >
+                  Next
+                  <ChevronRight className="size-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

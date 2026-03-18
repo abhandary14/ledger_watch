@@ -139,6 +139,8 @@ export function AlertsPage() {
   const filterType = searchParams.get('alert_type') ?? ''
   const sortDir = (searchParams.get('sort') ?? 'desc') as 'asc' | 'desc'
   const page = parseInt(searchParams.get('page') ?? '1', 10)
+  const pageSizeParam = searchParams.get('page_size') ?? '25'
+  const pageSize = pageSizeParam === 'all' ? 1000 : parseInt(pageSizeParam, 10)
 
   const hasFilters = !!(filterStatus || filterSeverity || filterType)
 
@@ -169,12 +171,21 @@ export function AlertsPage() {
     })
   }
 
+  function setPageSizeParam(ps: string) {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      next.set('page_size', ps)
+      next.delete('page')
+      return next
+    })
+  }
+
   const {
     data: alertsData,
     isLoading,
     isError,
   } = useQuery({
-    queryKey: ['alerts', filterStatus, filterSeverity, filterType, sortDir, page],
+    queryKey: ['alerts', filterStatus, filterSeverity, filterType, sortDir, page, pageSize],
     queryFn: () =>
       getAlertsApi({
         status: filterStatus || undefined,
@@ -182,6 +193,7 @@ export function AlertsPage() {
         alert_type: filterType || undefined,
         ordering: sortDir === 'asc' ? 'created_at' : '-created_at',
         page,
+        page_size: pageSize,
       }).then((r) => r.data),
   })
 
@@ -255,7 +267,7 @@ export function AlertsPage() {
   }
 
   const alerts = alertsData?.results ?? []
-  const totalPages = alertsData ? Math.ceil(alertsData.count / 20) : 1
+  const totalPages = alertsData ? Math.max(1, Math.ceil(alertsData.count / pageSize)) : 1
   const openAlerts = alerts.filter((a) => a.status === 'OPEN')
 
   function toggleSelect(id: string) {
@@ -527,29 +539,47 @@ export function AlertsPage() {
       </div>
 
       {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-end gap-2 text-sm">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={page <= 1}
-            onClick={() => setPage(page - 1)}
-          >
-            <ChevronLeft className="size-4" />
-            Previous
-          </Button>
-          <span className="text-muted-foreground">
-            Page {page} of {totalPages}
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={page >= totalPages}
-            onClick={() => setPage(page + 1)}
-          >
-            Next
-            <ChevronRight className="size-4" />
-          </Button>
+      {!isLoading && (alerts.length > 0 || alertsData) && (
+        <div className="flex items-center justify-between text-sm">
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <span>Rows per page:</span>
+            <Select value={pageSizeParam} onValueChange={setPageSizeParam}>
+              <SelectTrigger className="h-7 w-20 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="25">25</SelectItem>
+                <SelectItem value="50">50</SelectItem>
+                <SelectItem value="100">100</SelectItem>
+                <SelectItem value="all">All</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {pageSizeParam !== 'all' && totalPages > 1 && (
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page <= 1}
+                onClick={() => setPage(page - 1)}
+              >
+                <ChevronLeft className="size-4" />
+                Previous
+              </Button>
+              <span className="text-muted-foreground">
+                Page {page} of {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page >= totalPages}
+                onClick={() => setPage(page + 1)}
+              >
+                Next
+                <ChevronRight className="size-4" />
+              </Button>
+            </div>
+          )}
         </div>
       )}
     </div>
