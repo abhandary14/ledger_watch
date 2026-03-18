@@ -3,6 +3,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import {
   AlertCircle,
   BarChart2,
+  BookOpen,
   Building2,
   ChevronLeft,
   ChevronRight,
@@ -77,27 +78,48 @@ export function AppLayout() {
         )}
 
         {/* Navigation */}
-        <nav className="flex-1 space-y-0.5 px-2 py-4">
-          {navItems.map(({ to, icon: Icon, label }) => (
-            <NavLink
-              key={to}
-              to={to}
-              title={label}
-              aria-label={label}
-              className={({ isActive }) =>
-                cn(
-                  'flex items-center gap-3 rounded-lg px-2 py-2 text-sm transition-colors',
-                  collapsed ? 'justify-center' : 'justify-start px-3',
-                  isActive
-                    ? 'bg-sidebar-primary text-sidebar-primary-foreground font-medium'
-                    : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
-                )
-              }
-            >
-              <Icon className="size-4 shrink-0" />
-              {!collapsed && <span>{label}</span>}
-            </NavLink>
-          ))}
+        <nav className="flex flex-col flex-1 px-2 py-4">
+          <div className="flex-1 space-y-0.5">
+            {navItems.map(({ to, icon: Icon, label }) => (
+              <NavLink
+                key={to}
+                to={to}
+                title={label}
+                aria-label={label}
+                className={({ isActive }) =>
+                  cn(
+                    'flex items-center gap-3 rounded-lg px-2 py-2 text-sm transition-colors',
+                    collapsed ? 'justify-center' : 'justify-start px-3',
+                    isActive
+                      ? 'bg-sidebar-primary text-sidebar-primary-foreground font-medium'
+                      : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+                  )
+                }
+              >
+                <Icon className="size-4 shrink-0" />
+                {!collapsed && <span>{label}</span>}
+              </NavLink>
+            ))}
+          </div>
+
+          {/* Docs link — pinned to bottom of nav */}
+          <NavLink
+            to="/docs"
+            title="Documentation"
+            aria-label="Documentation"
+            className={({ isActive }) =>
+              cn(
+                'flex items-center gap-3 rounded-lg px-2 py-2 text-sm transition-colors',
+                collapsed ? 'justify-center' : 'justify-start px-3',
+                isActive
+                  ? 'bg-sidebar-primary text-sidebar-primary-foreground font-medium'
+                  : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+              )
+            }
+          >
+            <BookOpen className="size-4 shrink-0" />
+            {!collapsed && <span>Documentation</span>}
+          </NavLink>
         </nav>
 
         {/* User + Logout */}

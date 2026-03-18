@@ -13,6 +13,7 @@ import { AlertsPage } from '@/pages/app/AlertsPage'
 import { SettingsPage } from '@/pages/app/SettingsPage'
 import { ManageOrgPage } from '@/pages/app/ManageOrgPage'
 import { OrgDirectoryPage } from '@/pages/app/OrgDirectoryPage'
+import { DocsPage } from '@/pages/app/DocsPage'
 
 export function App() {
   return (
@@ -31,6 +32,7 @@ export function App() {
             <Route path="/alerts" element={<ErrorBoundary><AlertsPage /></ErrorBoundary>} />
             <Route path="/settings" element={<ErrorBoundary><SettingsPage /></ErrorBoundary>} />
             <Route path="/org-directory" element={<ErrorBoundary><OrgDirectoryPage /></ErrorBoundary>} />
+            <Route path="/docs" element={<ErrorBoundary><DocsPage /></ErrorBoundary>} />
 
             {/* Owner-only routes */}
             <Route element={<OwnerRoute />}>

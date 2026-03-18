@@ -291,7 +291,6 @@ export function AlertsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">Alerts</h1>
-        <p className="text-sm text-muted-foreground">Review and manage detected issues</p>
       </div>
 
       {/* Filter bar */}
@@ -429,8 +428,8 @@ export function AlertsPage() {
                     {sortDir === 'desc'
                       ? <ArrowDown className="size-3.5" />
                       : sortDir === 'asc'
-                      ? <ArrowUp className="size-3.5" />
-                      : <ArrowUpDown className="size-3.5 opacity-40" />}
+                        ? <ArrowUp className="size-3.5" />
+                        : <ArrowUpDown className="size-3.5 opacity-40" />}
                   </button>
                   <ResizeHandle onMouseDown={(e) => startResize(4, e)} />
                 </TableHead>

@@ -529,7 +529,7 @@ export function ManageOrgPage() {
         <div>
           <h1 className="text-2xl font-semibold">Manage Organization</h1>
           <p className="text-sm text-muted-foreground">
-            {user?.organization.name} · manage members and roles
+            {user?.organization.name}
           </p>
         </div>
         <AddMemberDialog />

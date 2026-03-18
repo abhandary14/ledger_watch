@@ -400,7 +400,6 @@ export function AnalysisPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">Analysis</h1>
-        <p className="text-sm text-muted-foreground">Run analyzers and review results</p>
       </div>
 
       <div className="grid grid-cols-3 gap-6">
@@ -512,37 +511,37 @@ export function AnalysisPage() {
                 </p>
               ) : (
                 <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Run Time</TableHead>
-                      <TableHead>Key Metric</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {resultsData.results.map((run) => (
-                      <TableRow
-                        key={run.id}
-                        className="cursor-pointer hover:bg-muted/50"
-                        onClick={() => setDrawerRunId(run.id)}
-                      >
-                        <TableCell className="font-medium">
-                          {ANALYZER_TYPES.find((t) => t.value === run.analysis_type)?.label ??
-                            run.analysis_type}
-                        </TableCell>
-                        <TableCell>
-                          <StatusBadge status={run.status} />
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {run.run_time ? relativeTime(run.run_time) : relativeTime(run.created_at)}
-                        </TableCell>
-                        <TableCell className="text-sm">{getKeyMetric(run)}</TableCell>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Run Time</TableHead>
+                        <TableHead>Key Metric</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {resultsData.results.map((run) => (
+                        <TableRow
+                          key={run.id}
+                          className="cursor-pointer hover:bg-muted/50"
+                          onClick={() => setDrawerRunId(run.id)}
+                        >
+                          <TableCell className="font-medium">
+                            {ANALYZER_TYPES.find((t) => t.value === run.analysis_type)?.label ??
+                              run.analysis_type}
+                          </TableCell>
+                          <TableCell>
+                            <StatusBadge status={run.status} />
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {run.run_time ? relativeTime(run.run_time) : relativeTime(run.created_at)}
+                          </TableCell>
+                          <TableCell className="text-sm">{getKeyMetric(run)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
                 </div>
               )}
             </CardContent>
