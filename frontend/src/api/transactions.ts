@@ -25,8 +25,17 @@ export interface TransactionImportRow {
   description?: string
 }
 
+export interface TransactionFilterOptions {
+  vendors: string[]
+  categories: string[]
+}
+
 export function getTransactionsApi(params: Record<string, string>) {
   return apiClient.get<PaginatedResponse<Transaction>>('/api/v1/transactions/', { params })
+}
+
+export function getTransactionFilterOptionsApi() {
+  return apiClient.get<TransactionFilterOptions>('/api/v1/transactions/filter-options/')
 }
 
 export function importTransactionsApi(transactions: TransactionImportRow[]) {

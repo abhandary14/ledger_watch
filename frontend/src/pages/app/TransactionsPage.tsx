@@ -9,6 +9,8 @@ import Papa from 'papaparse'
 import type { ParseResult } from 'papaparse'
 import {
   ChevronDown,
+  ChevronUp,
+  ChevronsUpDown,
   ChevronRight,
   ChevronLeft,
   Upload,
@@ -51,6 +53,7 @@ import {
 
 import {
   getTransactionsApi,
+  getTransactionFilterOptionsApi,
   importTransactionsApi,
   deleteTransactionApi,
   type Transaction,
@@ -723,6 +726,8 @@ interface FilterBarProps {
   category: string
   dateFrom: Date | undefined
   dateTo: Date | undefined
+  vendors: string[]
+  categories: string[]
   onVendorChange: (v: string) => void
   onCategoryChange: (v: string) => void
   onDateFromChange: (d: Date | undefined) => void
@@ -736,6 +741,8 @@ function FilterBar({
   category,
   dateFrom,
   dateTo,
+  vendors,
+  categories,
   onVendorChange,
   onCategoryChange,
   onDateFromChange,
@@ -745,18 +752,28 @@ function FilterBar({
 }: FilterBarProps) {
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <Input
-        className="h-9 w-40 text-sm"
-        placeholder="Vendor"
-        value={vendor}
-        onChange={(e) => onVendorChange(e.target.value)}
-      />
-      <Input
-        className="h-9 w-40 text-sm"
-        placeholder="Category"
-        value={category}
-        onChange={(e) => onCategoryChange(e.target.value)}
-      />
+      <Select value={vendor || '__all__'} onValueChange={(v) => onVendorChange(v === '__all__' ? '' : v)}>
+        <SelectTrigger className="h-9 w-44 text-sm">
+          <SelectValue placeholder="All vendors" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="__all__">All vendors</SelectItem>
+          {vendors.map((v) => (
+            <SelectItem key={v} value={v}>{v}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Select value={category || '__all__'} onValueChange={(v) => onCategoryChange(v === '__all__' ? '' : v)}>
+        <SelectTrigger className="h-9 w-44 text-sm">
+          <SelectValue placeholder="All categories" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="__all__">All categories</SelectItem>
+          {categories.map((c) => (
+            <SelectItem key={c} value={c}>{c}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
       <DatePicker value={dateFrom} onChange={onDateFromChange} placeholder="Date from" />
       <DatePicker value={dateTo} onChange={onDateToChange} placeholder="Date to" />
       {hasFilters && (
@@ -770,6 +787,16 @@ function FilterBar({
 }
 
 // ─── page ─────────────────────────────────────────────────────────────────────
+
+type SortField = 'date' | 'amount'
+type SortDir = 'asc' | 'desc'
+
+function SortIcon({ field, sortField, sortDir }: { field: SortField; sortField: SortField | null; sortDir: SortDir }) {
+  if (sortField !== field) return <ChevronsUpDown className="ml-1 inline size-3.5 text-muted-foreground/50" />
+  return sortDir === 'asc'
+    ? <ChevronUp className="ml-1 inline size-3.5" />
+    : <ChevronDown className="ml-1 inline size-3.5" />
+}
 
 export function TransactionsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -791,23 +818,23 @@ export function TransactionsPage() {
     onError: () => toast.error('Failed to delete transaction'),
   })
 
-  // Debounce refs for text filters
-  const vendorDebounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
-  const categoryDebounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  // Local controlled values for text inputs (debounced before writing to URL)
-  const [vendorInput, setVendorInput] = React.useState(searchParams.get('vendor') ?? '')
-  const [categoryInput, setCategoryInput] = React.useState(searchParams.get('category') ?? '')
-
-  // Read filter state from URL
+  // Read filter + sort state from URL
   const urlVendor = searchParams.get('vendor') ?? ''
   const urlCategory = searchParams.get('category') ?? ''
   const urlDateFrom = searchParams.get('date_from') ?? ''
   const urlDateTo = searchParams.get('date_to') ?? ''
+  const urlOrdering = searchParams.get('ordering') ?? ''
   const page = parseInt(searchParams.get('page') ?? '1', 10)
 
   const dateFrom = urlDateFrom ? new Date(urlDateFrom) : undefined
   const dateTo = urlDateTo ? new Date(urlDateTo) : undefined
+
+  // Derive sort field/dir from ordering param
+  const sortField: SortField | null =
+    urlOrdering.replace('-', '') === 'date' ? 'date'
+    : urlOrdering.replace('-', '') === 'amount' ? 'amount'
+    : null
+  const sortDir: SortDir = urlOrdering.startsWith('-') ? 'desc' : 'asc'
 
   const hasFilters = !!(urlVendor || urlCategory || urlDateFrom || urlDateTo)
 
@@ -825,15 +852,11 @@ export function TransactionsPage() {
   }
 
   function handleVendorChange(v: string) {
-    setVendorInput(v)
-    if (vendorDebounceRef.current) clearTimeout(vendorDebounceRef.current)
-    vendorDebounceRef.current = setTimeout(() => updateParam('vendor', v || undefined), 300)
+    updateParam('vendor', v || undefined)
   }
 
   function handleCategoryChange(v: string) {
-    setCategoryInput(v)
-    if (categoryDebounceRef.current) clearTimeout(categoryDebounceRef.current)
-    categoryDebounceRef.current = setTimeout(() => updateParam('category', v || undefined), 300)
+    updateParam('category', v || undefined)
   }
 
   function handleDateFromChange(d: Date | undefined) {
@@ -845,8 +868,6 @@ export function TransactionsPage() {
   }
 
   function handleClearFilters() {
-    setVendorInput('')
-    setCategoryInput('')
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev)
       next.delete('vendor')
@@ -854,6 +875,26 @@ export function TransactionsPage() {
       next.delete('date_from')
       next.delete('date_to')
       next.set('page', '1')
+      return next
+    })
+  }
+
+  function handleSort(field: SortField) {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      next.set('page', '1')
+      if (sortField === field) {
+        if (sortDir === 'desc') {
+          // desc → asc
+          next.set('ordering', field)
+        } else {
+          // asc → clear (back to default)
+          next.delete('ordering')
+        }
+      } else {
+        // new field → desc first
+        next.set('ordering', `-${field}`)
+      }
       return next
     })
   }
@@ -867,11 +908,18 @@ export function TransactionsPage() {
   if (urlCategory) queryParams.category = urlCategory
   if (urlDateFrom) queryParams.date_from = urlDateFrom
   if (urlDateTo) queryParams.date_to = urlDateTo
+  if (urlOrdering) queryParams.ordering = urlOrdering
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['transactions', queryParams],
     queryFn: () => getTransactionsApi(queryParams).then((r) => r.data),
     placeholderData: (prev) => prev,
+  })
+
+  const { data: filterOptions } = useQuery({
+    queryKey: ['transactions', 'filter-options'],
+    queryFn: () => getTransactionFilterOptionsApi().then((r) => r.data),
+    staleTime: 60_000,
   })
 
   const totalPages = data ? Math.max(1, Math.ceil(data.count / PAGE_SIZE)) : 1
@@ -912,10 +960,12 @@ export function TransactionsPage() {
 
       {/* Filter Bar */}
       <FilterBar
-        vendor={vendorInput}
-        category={categoryInput}
+        vendor={urlVendor}
+        category={urlCategory}
         dateFrom={dateFrom}
         dateTo={dateTo}
+        vendors={filterOptions?.vendors ?? []}
+        categories={filterOptions?.categories ?? []}
         onVendorChange={handleVendorChange}
         onCategoryChange={handleCategoryChange}
         onDateFromChange={handleDateFromChange}
@@ -929,10 +979,20 @@ export function TransactionsPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Date</TableHead>
+              <TableHead
+                className="cursor-pointer select-none whitespace-nowrap"
+                onClick={() => handleSort('date')}
+              >
+                Date <SortIcon field="date" sortField={sortField} sortDir={sortDir} />
+              </TableHead>
               <TableHead>Vendor</TableHead>
               <TableHead>Category</TableHead>
-              <TableHead className="text-right">Amount</TableHead>
+              <TableHead
+                className="cursor-pointer select-none whitespace-nowrap text-right"
+                onClick={() => handleSort('amount')}
+              >
+                Amount <SortIcon field="amount" sortField={sortField} sortDir={sortDir} />
+              </TableHead>
               <TableHead>Description</TableHead>
               <TableHead className="w-8" />
             </TableRow>

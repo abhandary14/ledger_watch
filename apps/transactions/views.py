@@ -5,8 +5,10 @@ Thin views — all business logic lives in TransactionService.
 """
 
 from django.shortcuts import get_object_or_404
+from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema, extend_schema_view, inline_serializer
 from rest_framework import serializers, status
+from rest_framework.filters import OrderingFilter
 from rest_framework.generics import ListAPIView, RetrieveAPIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -84,16 +86,54 @@ class TransactionListView(ListAPIView):
     Paginated list of all transactions for the authenticated user's organization.
     Supports filtering via query params:
       ?vendor=    ?category=    ?date_from=YYYY-MM-DD    ?date_to=YYYY-MM-DD
+    Supports ordering via ?ordering=date|-date|amount|-amount
     """
 
     permission_classes = [IsAuthenticated]
     serializer_class = TransactionSerializer
     filterset_class = TransactionFilter
+    filter_backends = [DjangoFilterBackend, OrderingFilter]
+    ordering_fields = ['date', 'amount']
+    ordering = ['-date', '-created_at']
 
     def get_queryset(self):
         return Transaction.objects.select_related("organization").filter(
             organization_id=self.request.user.organization_id
         )
+
+
+@extend_schema(
+    tags=["Transactions"],
+    summary="Get filter options",
+    description="Returns distinct vendor names and category values for the authenticated user's organization.",
+    responses={
+        200: inline_serializer(
+            "FilterOptions",
+            fields={
+                "vendors": serializers.ListField(child=serializers.CharField()),
+                "categories": serializers.ListField(child=serializers.CharField()),
+            },
+        )
+    },
+)
+class TransactionFilterOptionsView(APIView):
+    """
+    GET /api/v1/transactions/filter-options/
+
+    Returns sorted lists of distinct vendor names and non-empty category values
+    for the authenticated user's organization.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        org_id = request.user.organization_id
+        qs = Transaction.objects.filter(organization_id=org_id).order_by()
+        vendors = sorted(qs.values_list("vendor", flat=True).distinct())
+        categories = sorted(
+            v for v in qs.values_list("category", flat=True).distinct() if v
+        )
+        return Response({"vendors": vendors, "categories": categories})
 
 
 @extend_schema_view(
