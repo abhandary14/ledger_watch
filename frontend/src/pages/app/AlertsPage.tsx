@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -119,9 +119,19 @@ export function AlertsPage() {
   const filterStatus = searchParams.get('status') ?? ''
   const filterSeverity = searchParams.get('severity') ?? ''
   const filterType = searchParams.get('alert_type') ?? ''
+  const sortDir = (searchParams.get('sort') ?? 'desc') as 'asc' | 'desc'
   const page = parseInt(searchParams.get('page') ?? '1', 10)
 
   const hasFilters = !!(filterStatus || filterSeverity || filterType)
+
+  function toggleSort() {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      next.set('sort', sortDir === 'desc' ? 'asc' : 'desc')
+      next.delete('page')
+      return next
+    })
+  }
 
   function setFilter(key: string, value: string) {
     setSearchParams((prev) => {
@@ -146,12 +156,13 @@ export function AlertsPage() {
     isLoading,
     isError,
   } = useQuery({
-    queryKey: ['alerts', filterStatus, filterSeverity, filterType, page],
+    queryKey: ['alerts', filterStatus, filterSeverity, filterType, sortDir, page],
     queryFn: () =>
       getAlertsApi({
         status: filterStatus || undefined,
         severity: filterSeverity || undefined,
         alert_type: filterType || undefined,
+        ordering: sortDir === 'asc' ? 'created_at' : '-created_at',
         page,
       }).then((r) => r.data),
   })
@@ -370,7 +381,19 @@ export function AlertsPage() {
                 <TableHead>Severity</TableHead>
                 <TableHead>Type</TableHead>
                 <TableHead>Message</TableHead>
-                <TableHead>Created</TableHead>
+                <TableHead>
+                  <button
+                    className="flex items-center gap-1 font-medium hover:text-foreground"
+                    onClick={toggleSort}
+                  >
+                    Created
+                    {sortDir === 'desc'
+                      ? <ArrowDown className="size-3.5" />
+                      : sortDir === 'asc'
+                      ? <ArrowUp className="size-3.5" />
+                      : <ArrowUpDown className="size-3.5 opacity-40" />}
+                  </button>
+                </TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Actions</TableHead>
               </TableRow>

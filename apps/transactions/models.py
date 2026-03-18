@@ -5,6 +5,8 @@ from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
 from django.db import models
 from django.db.models import Q
+from django.db.models import functions as db_functions
+from django.utils import timezone
 
 from apps.organizations.models import Organization
 
@@ -84,6 +86,11 @@ class Transaction(models.Model):
                 condition=Q(amount__gt=0),
                 name="transaction_amount_positive",
             ),
+            # DB-level guard — rejects future-dated transactions even from raw SQL.
+            models.CheckConstraint(
+                condition=Q(date__lte=db_functions.Now()),
+                name="transaction_date_not_future",
+            ),
         ]
 
     def clean(self) -> None:
@@ -91,6 +98,8 @@ class Transaction(models.Model):
         super().clean()
         if self.amount is not None and self.amount <= 0:
             raise ValidationError({"amount": "Transaction amount must be greater than zero."})
+        if self.date is not None and self.date > timezone.localdate():
+            raise ValidationError({"date": "Transaction date cannot be in the future."})
 
     def __str__(self) -> str:
         return f"{self.date} | {self.vendor} | {self.amount}"

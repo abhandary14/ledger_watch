@@ -73,7 +73,10 @@ class AlertListView(ListAPIView):
         if alert_status:
             qs = qs.filter(status=alert_status.upper())
 
-        return qs
+        ordering = self.request.query_params.get("ordering", "-created_at")
+        if ordering not in ("created_at", "-created_at"):
+            ordering = "-created_at"
+        return qs.order_by(ordering)
 
 
 class AlertAcknowledgeView(APIView):

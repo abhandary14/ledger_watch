@@ -20,6 +20,7 @@ export function getAlertsApi(params: {
   alert_type?: string
   severity?: string
   status?: string
+  ordering?: string
   page?: number
 }) {
   return apiClient.get<PaginatedResponse<Alert>>('/api/v1/alerts/', { params })
