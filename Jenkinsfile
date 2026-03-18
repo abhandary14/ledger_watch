@@ -286,20 +286,7 @@ pipeline {
                         exit 1
                     fi
                 """
-                sh """
-                    docker run --rm \\
-                        --network ${COMPOSE_PROJECT_NAME}_default \\
-                        -e SECRET_KEY="${SECRET_KEY}" \\
-                        -e DEBUG=False \\
-                        -e ALLOWED_HOSTS=localhost,127.0.0.1 \\
-                        -e DB_NAME=ledgerwatch \\
-                        -e DB_USER=ledger \\
-                        -e DB_PASSWORD="${DB_PASSWORD}" \\
-                        -e DB_HOST=postgres \\
-                        -e DB_PORT=5432 \\
-                        ${IMAGE_NAME}:${BUILD_NUMBER} \\
-                        python manage.py migrate --noinput
-                """
+                sh "docker compose -f docker-compose.yml run --rm api python manage.py migrate --noinput"
             }
         }
 
