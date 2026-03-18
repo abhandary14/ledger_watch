@@ -98,10 +98,16 @@ class LoginView(APIView):
         email = User.objects.normalize_email(serializer.validated_data["email"])
         password = serializer.validated_data["password"]
 
+        if not User.objects.filter(email=email).exists():
+            return Response(
+                {"detail": "No account found with that email address.", "code": "user_not_found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
         user = authenticate(request, username=email, password=password)
         if user is None:
             return Response(
-                {"detail": "Invalid credentials."},
+                {"detail": "Invalid credentials.", "code": "invalid_password"},
                 status=status.HTTP_401_UNAUTHORIZED,
             )
 

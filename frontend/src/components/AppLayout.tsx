@@ -7,6 +7,7 @@ import {
   LogOut,
   ArrowLeftRight,
   Settings,
+  Users,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
 import { Button } from '@/components/ui/button'
@@ -29,7 +30,7 @@ export function AppLayout() {
     { to: '/settings', icon: Settings, label: 'Settings' },
     ...(user?.role === 'owner'
       ? [{ to: '/manage-org', icon: Building2, label: 'Manage Org' }]
-      : []),
+      : [{ to: '/org-directory', icon: Users, label: 'See Organization' }]),
   ]
 
   return (

@@ -29,6 +29,10 @@ export function updateMemberRoleApi(id: string, role: 'admin' | 'employee') {
   return apiClient.patch<OrgMember>(`/api/v1/organizations/members/${id}/`, { role })
 }
 
+export function getOrgDirectoryApi() {
+  return apiClient.get<OrgMember[]>('/api/v1/organizations/directory/')
+}
+
 export function getSecurityChallengeApi() {
   return apiClient.get<{ challenge: string }>('/api/v1/organizations/security-challenge/')
 }

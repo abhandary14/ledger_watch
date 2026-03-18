@@ -7,6 +7,7 @@ Mounted at api/v1/organizations/ in ledgerwatch/urls.py.
 from django.urls import path
 
 from apps.organizations.views import (
+    OrgDirectoryView,
     OrgMemberDetailView,
     OrgMemberListCreateView,
     OrganizationDetailView,
@@ -20,4 +21,5 @@ urlpatterns = [
     path("members/<uuid:pk>/", OrgMemberDetailView.as_view(), name="org-member-detail"),
     path("transfer-ownership/", TransferOwnershipView.as_view(), name="transfer-ownership"),
     path("security-challenge/", SecurityChallengeView.as_view(), name="security-challenge"),
+    path("directory/", OrgDirectoryView.as_view(), name="org-directory"),
 ]

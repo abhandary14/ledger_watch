@@ -44,6 +44,28 @@ def _validate_and_consume_challenge(user, password: str, challenge: str) -> str 
     return None
 
 
+class OrgDirectoryView(APIView):
+    """
+    GET /api/v1/organizations/directory/
+
+    Returns all members of the authenticated user's organization.
+    Accessible to all roles (employee, admin, owner) — read-only.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["Organizations"],
+        summary="List organization members (read-only, all roles)",
+    )
+    def get(self, request):
+        members = User.objects.filter(
+            organization_id=request.user.organization_id
+        ).order_by("created_at")
+        serializer = OrgMemberSerializer(members, many=True)
+        return Response(serializer.data)
+
+
 class SecurityChallengeView(APIView):
     """
     GET /api/v1/organizations/security-challenge/
