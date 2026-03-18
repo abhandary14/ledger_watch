@@ -1,8 +1,22 @@
 import axios from 'axios'
 
-// Access token lives in memory only (not localStorage) to reduce XSS risk.
-// Refresh token lives in localStorage so it survives page reloads.
+// Access token lives in memory only to reduce XSS risk.
+// Refresh token lives in sessionStorage by default (cleared on window close).
+// When "keep me signed in" is chosen it is stored in localStorage instead.
 let accessToken: string | null = null
+
+function getStoredRefresh(): { token: string; storage: Storage } | null {
+  const session = sessionStorage.getItem('refresh_token')
+  if (session) return { token: session, storage: sessionStorage }
+  const local = localStorage.getItem('refresh_token')
+  if (local) return { token: local, storage: localStorage }
+  return null
+}
+
+export function clearStoredRefresh(): void {
+  sessionStorage.removeItem('refresh_token')
+  localStorage.removeItem('refresh_token')
+}
 
 export function setAccessToken(token: string | null): void {
   accessToken = token
@@ -31,20 +45,20 @@ apiClient.interceptors.request.use((config) => {
 })
 
 async function doTokenRefresh(): Promise<string> {
-  const refresh = localStorage.getItem('refresh_token')
-  if (!refresh) throw new Error('No refresh token stored')
+  const stored = getStoredRefresh()
+  if (!stored) throw new Error('No refresh token stored')
 
   // Use plain axios so this request bypasses the interceptor (avoids recursion).
   const { data } = await axios.post<{ access: string; refresh?: string }>(
     `${BASE_URL}/api/v1/auth/token/refresh`,
-    { refresh },
+    { refresh: stored.token },
     { timeout: 10_000 },
   )
 
   setAccessToken(data.access)
-  // simplejwt rotates the refresh token when ROTATE_REFRESH_TOKENS = True.
+  // simplejwt rotates the refresh token — write back to the same storage.
   if (data.refresh) {
-    localStorage.setItem('refresh_token', data.refresh)
+    stored.storage.setItem('refresh_token', data.refresh)
   }
   return data.access
 }
@@ -83,7 +97,7 @@ apiClient.interceptors.response.use(
           axios.isAxiosError(refreshError) && refreshError.response?.status === 401
         if (noToken || isAuthFailure) {
           setAccessToken(null)
-          localStorage.removeItem('refresh_token')
+          clearStoredRefresh()
           window.location.href = '/login'
         }
         return Promise.reject(error)
