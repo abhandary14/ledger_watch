@@ -15,6 +15,7 @@ import {
   Plus,
   CalendarIcon,
   X,
+  Trash2,
 } from 'lucide-react'
 import { format } from 'date-fns'
 
@@ -51,9 +52,11 @@ import {
 import {
   getTransactionsApi,
   importTransactionsApi,
+  deleteTransactionApi,
   type Transaction,
   type TransactionImportRow,
 } from '@/api/transactions'
+import { useAuth } from '@/hooks/use-auth'
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -109,7 +112,15 @@ function DatePicker({ value, onChange, placeholder = 'Pick a date' }: DatePicker
 
 // ─── row detail panel ────────────────────────────────────────────────────────
 
-function TransactionDetail({ tx }: { tx: Transaction }) {
+function TransactionDetail({
+  tx,
+  canDelete,
+  onDelete,
+}: {
+  tx: Transaction
+  canDelete: boolean
+  onDelete: (id: string) => void
+}) {
   return (
     <tr>
       <td colSpan={6} className="bg-muted/30 px-4 py-3">
@@ -145,6 +156,22 @@ function TransactionDetail({ tx }: { tx: Transaction }) {
             </div>
           )}
         </dl>
+        {canDelete && (
+          <div className="mt-3 flex justify-end">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 px-2 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
+              onClick={(e) => {
+                e.stopPropagation()
+                onDelete(tx.id)
+              }}
+            >
+              <Trash2 className="mr-1 size-3" />
+              Delete
+            </Button>
+          </div>
+        )}
       </td>
     </tr>
   )
@@ -749,6 +776,20 @@ export function TransactionsPage() {
   const [addOpen, setAddOpen] = React.useState(false)
   const [importOpen, setImportOpen] = React.useState(false)
   const [expandedId, setExpandedId] = React.useState<string | null>(null)
+  const queryClient = useQueryClient()
+  const { user } = useAuth()
+  const canDelete = user?.role === 'owner' || user?.role === 'admin'
+
+  const { mutate: deleteTransaction } = useMutation({
+    mutationFn: (id: string) => deleteTransactionApi(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['transactions'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      setExpandedId(null)
+      toast.success('Transaction deleted')
+    },
+    onError: () => toast.error('Failed to delete transaction'),
+  })
 
   // Debounce refs for text filters
   const vendorDebounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -958,7 +999,13 @@ export function TransactionsPage() {
                       )}
                     </TableCell>
                   </TableRow>
-                  {expandedId === tx.id && <TransactionDetail tx={tx} />}
+                  {expandedId === tx.id && (
+                    <TransactionDetail
+                      tx={tx}
+                      canDelete={canDelete}
+                      onDelete={deleteTransaction}
+                    />
+                  )}
                 </React.Fragment>
               ))
             )}

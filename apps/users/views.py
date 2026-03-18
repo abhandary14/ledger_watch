@@ -39,6 +39,12 @@ class RegisterView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        if Organization.objects.filter(name=org_name).exists():
+            return Response(
+                {"organization_name": ["An organization with this name already exists."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         local_part = email.split("@")[0].lower()
         role = User.Role.OWNER if local_part == "owner" else User.Role.EMPLOYEE
 

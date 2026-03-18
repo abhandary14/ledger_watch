@@ -14,7 +14,7 @@ import {
   Cell,
 } from 'recharts'
 import { toast } from 'sonner'
-import { AlertTriangle, BarChart2, DollarSign, Receipt, Upload, Play } from 'lucide-react'
+import { AlertTriangle, BarChart2, DollarSign, Receipt } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -211,16 +211,6 @@ export function DashboardPage() {
         <div>
           <h1 className="text-2xl font-semibold">Dashboard</h1>
           <p className="text-sm text-muted-foreground">Financial health at a glance</p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => toast.info('Coming soon')}>
-            <Upload className="size-4" />
-            Import Transactions
-          </Button>
-          <Button size="sm" onClick={() => toast.info('Coming soon')}>
-            <Play className="size-4" />
-            Run Analysis
-          </Button>
         </div>
       </div>
 

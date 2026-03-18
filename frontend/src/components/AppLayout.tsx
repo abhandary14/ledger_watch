@@ -2,6 +2,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import {
   AlertCircle,
   BarChart2,
+  Building2,
   LayoutDashboard,
   LogOut,
   ArrowLeftRight,
@@ -11,14 +12,6 @@ import { useAuth } from '@/hooks/use-auth'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
-const navItems = [
-  { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/transactions', icon: ArrowLeftRight, label: 'Transactions' },
-  { to: '/analysis', icon: BarChart2, label: 'Analysis' },
-  { to: '/alerts', icon: AlertCircle, label: 'Alerts' },
-  { to: '/settings', icon: Settings, label: 'Settings' },
-]
-
 export function AppLayout() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
@@ -27,6 +20,17 @@ export function AppLayout() {
     await logout()
     navigate('/login')
   }
+
+  const navItems = [
+    { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+    { to: '/transactions', icon: ArrowLeftRight, label: 'Transactions' },
+    { to: '/analysis', icon: BarChart2, label: 'Analysis' },
+    { to: '/alerts', icon: AlertCircle, label: 'Alerts' },
+    { to: '/settings', icon: Settings, label: 'Settings' },
+    ...(user?.role === 'owner'
+      ? [{ to: '/manage-org', icon: Building2, label: 'Manage Org' }]
+      : []),
+  ]
 
   return (
     <div className="flex h-screen bg-background">

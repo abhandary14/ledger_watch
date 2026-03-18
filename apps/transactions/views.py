@@ -4,6 +4,7 @@ Views for the transactions app.
 Thin views — all business logic lives in TransactionService.
 """
 
+from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema, extend_schema_view, inline_serializer
 from rest_framework import serializers, status
 from rest_framework.generics import ListAPIView, RetrieveAPIView
@@ -14,6 +15,7 @@ from rest_framework.views import APIView
 from apps.transactions.filters import TransactionFilter
 from apps.transactions.models import Transaction
 from apps.transactions.serializers import TransactionImportSerializer, TransactionSerializer
+from apps.users.permissions import IsAdminOrOwner
 from services.transaction_service import TransactionService
 
 
@@ -119,3 +121,29 @@ class TransactionDetailView(RetrieveAPIView):
         return Transaction.objects.select_related("organization").filter(
             organization_id=self.request.user.organization_id
         )
+
+
+class TransactionDeleteView(APIView):
+    """
+    DELETE /api/v1/transactions/<uuid>/
+
+    Permanently delete a transaction. Requires admin or owner role.
+    """
+
+    permission_classes = [IsAdminOrOwner]
+
+    @extend_schema(
+        tags=["Transactions"],
+        summary="Delete a transaction",
+        responses={
+            204: OpenApiResponse(description="Transaction deleted."),
+            404: OpenApiResponse(description="Transaction not found."),
+        },
+    )
+    def delete(self, request, pk):
+        transaction = get_object_or_404(
+            Transaction.objects.filter(organization_id=request.user.organization_id),
+            pk=pk,
+        )
+        transaction.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)

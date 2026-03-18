@@ -33,6 +33,7 @@ import {
   getAnalysisResultApi,
   type AnalysisRun,
 } from '@/api/analysis'
+import { useAuth } from '@/hooks/use-auth'
 
 // ─── constants ───────────────────────────────────────────────────────────────
 
@@ -389,6 +390,9 @@ export function AnalysisPage() {
     enabled: drawerRunId != null,
   })
 
+  const { user } = useAuth()
+  const canRunAnalysis = user?.role === 'owner' || user?.role === 'admin'
+
   const selectedMeta = ANALYZER_TYPES.find((t) => t.value === selectedType)
   const totalPages = resultsData ? Math.ceil(resultsData.count / 20) : 1
 
@@ -401,50 +405,63 @@ export function AnalysisPage() {
 
       <div className="grid grid-cols-3 gap-6">
         {/* Left panel — Run Analysis */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-medium">Run Analysis</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <Select value={selectedType} onValueChange={setSelectedType}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select analyzer type…" />
-              </SelectTrigger>
-              <SelectContent>
-                {ANALYZER_TYPES.map((t) => (
-                  <SelectItem key={t.value} value={t.value}>
-                    {t.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+        {canRunAnalysis ? (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm font-medium">Run Analysis</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Select value={selectedType} onValueChange={setSelectedType}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select analyzer type…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {ANALYZER_TYPES.map((t) => (
+                    <SelectItem key={t.value} value={t.value}>
+                      {t.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
 
-            {selectedMeta && (
-              <p className="text-xs text-muted-foreground">{selectedMeta.description}</p>
-            )}
+              {selectedMeta && (
+                <p className="text-xs text-muted-foreground">{selectedMeta.description}</p>
+              )}
 
-            <Button
-              className="w-full"
-              disabled={!selectedType || isRunning}
-              onClick={() => {
-                setLastResult(null)
-                setRunError(null)
-                runAnalysis()
-              }}
-            >
-              {isRunning && <Loader2 className="mr-2 size-4 animate-spin" />}
-              Run Analysis
-            </Button>
+              <Button
+                className="w-full"
+                disabled={!selectedType || isRunning}
+                onClick={() => {
+                  setLastResult(null)
+                  setRunError(null)
+                  runAnalysis()
+                }}
+              >
+                {isRunning && <Loader2 className="mr-2 size-4 animate-spin" />}
+                Run Analysis
+              </Button>
 
-            {runError && (
-              <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                {runError}
+              {runError && (
+                <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                  {runError}
+                </p>
+              )}
+
+              {lastResult && <InlineResult run={lastResult} />}
+            </CardContent>
+          </Card>
+        ) : (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm font-medium">Run Analysis</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">
+                Only admins and owners can run analysis.
               </p>
-            )}
-
-            {lastResult && <InlineResult run={lastResult} />}
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Right panel — Results History */}
         <div className="col-span-2 space-y-4">

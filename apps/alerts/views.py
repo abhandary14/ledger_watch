@@ -242,3 +242,30 @@ class AlertReopenView(APIView):
             )
 
         return Response(AlertSerializer(alert).data, status=status.HTTP_200_OK)
+
+
+class AlertDeleteView(APIView):
+    """
+    DELETE /api/v1/alerts/<uuid>/
+
+    Permanently delete an alert. Requires admin or owner role.
+    """
+
+    permission_classes = [IsAdminOrOwner]
+
+    @extend_schema(
+        tags=["Alerts"],
+        summary="Delete an alert",
+        responses={
+            204: OpenApiResponse(description="Alert deleted."),
+            404: OpenApiResponse(description="Alert not found."),
+        },
+    )
+    def delete(self, request, pk):
+        from django.shortcuts import get_object_or_404
+        alert = get_object_or_404(
+            Alert.objects.filter(organization_id=request.user.organization_id),
+            pk=pk,
+        )
+        alert.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)

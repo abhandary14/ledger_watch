@@ -32,3 +32,7 @@ export function getTransactionsApi(params: Record<string, string>) {
 export function importTransactionsApi(transactions: TransactionImportRow[]) {
   return apiClient.post<{ imported: number }>('/api/v1/transactions/import', { transactions })
 }
+
+export function deleteTransactionApi(id: string) {
+  return apiClient.delete<void>(`/api/v1/transactions/${id}/delete`)
+}

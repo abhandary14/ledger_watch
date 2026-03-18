@@ -36,3 +36,7 @@ export function resolveAlertApi(id: string) {
 export function reopenAlertApi(id: string) {
   return apiClient.post<Alert>(`/api/v1/alerts/${id}/reopen`)
 }
+
+export function deleteAlertApi(id: string) {
+  return apiClient.delete<void>(`/api/v1/alerts/${id}/delete`)
+}

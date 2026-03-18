@@ -22,7 +22,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
-import { getAlertsApi, acknowledgeAlertApi, resolveAlertApi, reopenAlertApi, type Alert } from '@/api/alerts'
+import { getAlertsApi, acknowledgeAlertApi, resolveAlertApi, reopenAlertApi, deleteAlertApi, type Alert } from '@/api/alerts'
 import { useAuth } from '@/hooks/use-auth'
 
 // ─── constants ───────────────────────────────────────────────────────────────
@@ -113,6 +113,7 @@ export function AlertsPage() {
   const queryClient = useQueryClient()
   const { user } = useAuth()
   const canReopen = user?.role === 'owner' || user?.role === 'admin'
+  const canDelete = user?.role === 'owner' || user?.role === 'admin'
   const [selected, setSelected] = useState<Set<string>>(new Set())
 
   const filterStatus = searchParams.get('status') ?? ''
@@ -163,7 +164,14 @@ export function AlertsPage() {
       setSelected((s) => { const n = new Set(s); n.delete(id); return n })
       toast.success('Alert acknowledged')
     },
-    onError: () => toast.error('Failed to acknowledge alert'),
+    onError: (err: unknown) => {
+      const status = (err as { response?: { status?: number } })?.response?.status
+      if (status === 403) {
+        toast.error('This action can only be performed by an admin or owner. Contact your admin.')
+      } else {
+        toast.error('Failed to acknowledge alert')
+      }
+    },
   })
 
   const { mutate: resolve, isPending: resolving } = useMutation({
@@ -173,7 +181,14 @@ export function AlertsPage() {
       queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       toast.success('Alert resolved')
     },
-    onError: () => toast.error('Failed to resolve alert'),
+    onError: (err: unknown) => {
+      const status = (err as { response?: { status?: number } })?.response?.status
+      if (status === 403) {
+        toast.error('This action can only be performed by an admin or owner. Contact your admin.')
+      } else {
+        toast.error('Failed to resolve alert')
+      }
+    },
   })
 
   const { mutate: reopen, isPending: reopening } = useMutation({
@@ -184,6 +199,16 @@ export function AlertsPage() {
       toast.success('Alert reopened')
     },
     onError: () => toast.error('Failed to reopen alert'),
+  })
+
+  const { mutate: deleteAlert, isPending: deleting } = useMutation({
+    mutationFn: (id: string) => deleteAlertApi(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['alerts'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      toast.success('Alert deleted')
+    },
+    onError: () => toast.error('Failed to delete alert'),
   })
 
   async function acknowledgeAll() {
@@ -422,6 +447,17 @@ export function AlertsPage() {
                           onClick={() => reopen(alert.id)}
                         >
                           Reopen
+                        </Button>
+                      )}
+                      {canDelete && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 px-2 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
+                          disabled={deleting}
+                          onClick={() => deleteAlert(alert.id)}
+                        >
+                          Delete
                         </Button>
                       )}
                     </div>
