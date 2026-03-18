@@ -305,11 +305,12 @@ pipeline {
 
         // ── 10. Deploy ─────────────────────────────────────────────────────────
         // Brings up (or restarts) the full stack with the freshly-built image.
-        // docker compose up -d is idempotent: running containers are left alone,
-        // only containers whose image changed are recreated.
+        // docker compose up -d --build is idempotent: running containers are left alone,
+        // only containers whose image changed are recreated; --build ensures the
+        // frontend image is always rebuilt so changes are picked up on redeployment.
         stage('Deploy') {
             steps {
-                sh "docker compose -f docker-compose.yml up -d"
+                sh "docker compose -f docker-compose.yml up -d --build"
                 echo "Deployed — App: http://localhost | API: http://localhost:8000 | Docs: http://localhost:8000/api/docs/"
             }
         }
