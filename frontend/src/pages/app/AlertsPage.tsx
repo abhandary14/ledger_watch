@@ -1,4 +1,6 @@
+import * as React from 'react'
 import { useState } from 'react'
+import { useColumnResize } from '@/hooks/use-column-resize'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -106,6 +108,19 @@ function AlertMessage({ message }: { message: string }) {
   )
 }
 
+// ─── resize handle ────────────────────────────────────────────────────────────
+
+function ResizeHandle({ onMouseDown }: { onMouseDown: (e: React.MouseEvent) => void }) {
+  return (
+    <div
+      className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none group/rh"
+      onMouseDown={onMouseDown}
+    >
+      <div className="absolute right-0 top-1 h-[calc(100%-8px)] w-px bg-border opacity-0 transition-opacity group-hover/rh:opacity-100" />
+    </div>
+  )
+}
+
 // ─── page ─────────────────────────────────────────────────────────────────────
 
 export function AlertsPage() {
@@ -115,6 +130,9 @@ export function AlertsPage() {
   const canReopen = user?.role === 'owner' || user?.role === 'admin'
   const canDelete = user?.role === 'owner' || user?.role === 'admin'
   const [selected, setSelected] = useState<Set<string>>(new Set())
+
+  // column widths: checkbox, Severity, Type, Message, Created, Status, Actions
+  const { widths: colW, sumPx, startResize, containerRef } = useColumnResize([40, 90, 140, 300, 90, 110, 200])
 
   const filterStatus = searchParams.get('status') ?? ''
   const filterSeverity = searchParams.get('severity') ?? ''
@@ -338,7 +356,7 @@ export function AlertsPage() {
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto rounded-md border">
+      <div ref={containerRef} className="overflow-x-auto rounded-md border">
         {isLoading ? (
           <div className="space-y-px p-4">
             {Array.from({ length: 6 }).map((_, i) => (
@@ -368,20 +386,29 @@ export function AlertsPage() {
             )}
           </div>
         ) : (
-          <Table>
+          <Table style={{ tableLayout: 'fixed', width: sumPx }}>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-10">
+                <TableHead className="relative" style={{ width: colW[0] }}>
                   <Checkbox
                     checked={openAlerts.length > 0 && selected.size === openAlerts.length}
                     onCheckedChange={toggleAll}
                     aria-label="Select all open"
                   />
                 </TableHead>
-                <TableHead>Severity</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Message</TableHead>
-                <TableHead>
+                <TableHead className="relative" style={{ width: colW[1] }}>
+                  Severity
+                  <ResizeHandle onMouseDown={(e) => startResize(1, e)} />
+                </TableHead>
+                <TableHead className="relative" style={{ width: colW[2] }}>
+                  Type
+                  <ResizeHandle onMouseDown={(e) => startResize(2, e)} />
+                </TableHead>
+                <TableHead className="relative" style={{ width: colW[3] }}>
+                  Message
+                  <ResizeHandle onMouseDown={(e) => startResize(3, e)} />
+                </TableHead>
+                <TableHead className="relative" style={{ width: colW[4] }}>
                   <button
                     className="flex items-center gap-1 font-medium hover:text-foreground"
                     onClick={toggleSort}
@@ -393,9 +420,16 @@ export function AlertsPage() {
                       ? <ArrowUp className="size-3.5" />
                       : <ArrowUpDown className="size-3.5 opacity-40" />}
                   </button>
+                  <ResizeHandle onMouseDown={(e) => startResize(4, e)} />
                 </TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Actions</TableHead>
+                <TableHead className="relative" style={{ width: colW[5] }}>
+                  Status
+                  <ResizeHandle onMouseDown={(e) => startResize(5, e)} />
+                </TableHead>
+                <TableHead className="relative" style={{ width: colW[6] }}>
+                  Actions
+                  <ResizeHandle onMouseDown={(e) => startResize(6, e)} />
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -417,7 +451,7 @@ export function AlertsPage() {
                     <SeverityBadge severity={alert.severity} />
                   </TableCell>
                   <TableCell className="text-sm">{alert.alert_type}</TableCell>
-                  <TableCell className="max-w-xs">
+                  <TableCell className="overflow-hidden">
                     <AlertMessage message={alert.message} />
                   </TableCell>
                   <TableCell className="whitespace-nowrap text-xs text-muted-foreground">

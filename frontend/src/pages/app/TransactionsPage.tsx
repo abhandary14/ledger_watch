@@ -60,6 +60,7 @@ import {
   type TransactionImportRow,
 } from '@/api/transactions'
 import { useAuth } from '@/hooks/use-auth'
+import { useColumnResize } from '@/hooks/use-column-resize'
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -719,6 +720,19 @@ function ImportCsvDialog({ open, onOpenChange }: ImportCsvDialogProps) {
   )
 }
 
+// ─── resize handle ────────────────────────────────────────────────────────────
+
+function ResizeHandle({ onMouseDown }: { onMouseDown: (e: React.MouseEvent) => void }) {
+  return (
+    <div
+      className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none group/rh"
+      onMouseDown={onMouseDown}
+    >
+      <div className="absolute right-0 top-1 h-[calc(100%-8px)] w-px bg-border opacity-0 transition-opacity group-hover/rh:opacity-100" />
+    </div>
+  )
+}
+
 // ─── filter bar ───────────────────────────────────────────────────────────────
 
 interface FilterBarProps {
@@ -806,6 +820,9 @@ export function TransactionsPage() {
   const queryClient = useQueryClient()
   const { user } = useAuth()
   const canDelete = user?.role === 'owner' || user?.role === 'admin'
+
+  // column widths: Date, Vendor, Category, Amount, Description, chevron
+  const { widths: colW, sumPx, startResize, containerRef } = useColumnResize([90, 160, 130, 110, 220, 32])
 
   const { mutate: deleteTransaction } = useMutation({
     mutationFn: (id: string) => deleteTransactionApi(id),
@@ -975,26 +992,39 @@ export function TransactionsPage() {
       />
 
       {/* Table */}
-      <div className="overflow-x-auto rounded-lg border">
-        <Table>
+      <div ref={containerRef} className="overflow-x-auto rounded-lg border">
+        <Table style={{ tableLayout: 'fixed', width: sumPx }}>
           <TableHeader>
             <TableRow>
               <TableHead
-                className="cursor-pointer select-none whitespace-nowrap"
+                className="relative cursor-pointer select-none whitespace-nowrap"
+                style={{ width: colW[0] }}
                 onClick={() => handleSort('date')}
               >
                 Date <SortIcon field="date" sortField={sortField} sortDir={sortDir} />
+                <ResizeHandle onMouseDown={(e) => startResize(0, e)} />
               </TableHead>
-              <TableHead>Vendor</TableHead>
-              <TableHead>Category</TableHead>
+              <TableHead className="relative" style={{ width: colW[1] }}>
+                Vendor
+                <ResizeHandle onMouseDown={(e) => startResize(1, e)} />
+              </TableHead>
+              <TableHead className="relative" style={{ width: colW[2] }}>
+                Category
+                <ResizeHandle onMouseDown={(e) => startResize(2, e)} />
+              </TableHead>
               <TableHead
-                className="cursor-pointer select-none whitespace-nowrap text-right"
+                className="relative cursor-pointer select-none whitespace-nowrap text-right"
+                style={{ width: colW[3] }}
                 onClick={() => handleSort('amount')}
               >
                 Amount <SortIcon field="amount" sortField={sortField} sortDir={sortDir} />
+                <ResizeHandle onMouseDown={(e) => startResize(3, e)} />
               </TableHead>
-              <TableHead>Description</TableHead>
-              <TableHead className="w-8" />
+              <TableHead className="relative" style={{ width: colW[4] }}>
+                Description
+                <ResizeHandle onMouseDown={(e) => startResize(4, e)} />
+              </TableHead>
+              <TableHead style={{ width: colW[5] }} />
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -1039,16 +1069,16 @@ export function TransactionsPage() {
                     onClick={() => toggleExpand(tx.id)}
                   >
                     <TableCell className="text-sm">{tx.date}</TableCell>
-                    <TableCell className="max-w-[160px] truncate text-sm font-medium">
+                    <TableCell className="truncate text-sm font-medium">
                       {tx.vendor}
                     </TableCell>
-                    <TableCell className="max-w-[120px] truncate text-sm text-muted-foreground">
+                    <TableCell className="truncate text-sm text-muted-foreground">
                       {tx.category || '—'}
                     </TableCell>
                     <TableCell className="text-right text-sm font-mono">
                       {formatUSD(tx.amount)}
                     </TableCell>
-                    <TableCell className="max-w-[200px] truncate text-sm text-muted-foreground">
+                    <TableCell className="truncate text-sm text-muted-foreground">
                       {tx.description || '—'}
                     </TableCell>
                     <TableCell className="text-center">
