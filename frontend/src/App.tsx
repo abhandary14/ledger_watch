@@ -21,7 +21,7 @@ export function App() {
 
         {/* Protected — all nested inside AppLayout */}
         <Route element={<ProtectedRoute />}>
-          <Route element={<AppLayout />}>
+          <Route element={<ErrorBoundary><AppLayout /></ErrorBoundary>}>
             <Route path="/dashboard" element={<ErrorBoundary><DashboardPage /></ErrorBoundary>} />
             <Route path="/transactions" element={<ErrorBoundary><TransactionsPage /></ErrorBoundary>} />
             <Route path="/analysis" element={<ErrorBoundary><AnalysisPage /></ErrorBoundary>} />

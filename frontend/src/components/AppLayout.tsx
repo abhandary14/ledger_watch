@@ -63,6 +63,7 @@ export function AppLayout() {
               key={to}
               to={to}
               title={label}
+              aria-label={label}
               className={({ isActive }) =>
                 cn(
                   'flex items-center justify-center gap-3 rounded-lg px-2 py-2 text-sm transition-colors md:justify-start md:px-3',

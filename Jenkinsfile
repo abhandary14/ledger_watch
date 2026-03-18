@@ -172,6 +172,7 @@ pipeline {
                 """
                 sh """docker cp "${WORKSPACE}/frontend/." fe-install-${BUILD_NUMBER}:/app/"""
                 sh "docker start -a fe-install-${BUILD_NUMBER}"
+                sh """rm -rf "${WORKSPACE}/frontend/node_modules" """
                 sh """docker cp fe-install-${BUILD_NUMBER}:/app/node_modules "${WORKSPACE}/frontend/node_modules" """
             }
             post {
@@ -308,7 +309,7 @@ pipeline {
         // only containers whose image changed are recreated.
         stage('Deploy') {
             steps {
-                sh "docker compose -f docker-compose.yml up -d --no-build"
+                sh "docker compose -f docker-compose.yml up -d"
                 echo "Deployed — App: http://localhost | API: http://localhost:8000 | Docs: http://localhost:8000/api/docs/"
             }
         }
