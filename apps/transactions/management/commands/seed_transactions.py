@@ -68,8 +68,10 @@ def _month_end(month_start: date) -> date:
     return date(year, month, 1) - timedelta(days=1)
 
 
-def _random_date_in_month(month_start: date, rng: random.Random) -> date:
+def _random_date_in_month(month_start: date, rng: random.Random, max_date: date | None = None) -> date:
     end = _month_end(month_start)
+    if max_date is not None and max_date < end:
+        end = max(max_date, month_start)
     delta = (end - month_start).days
     return month_start + timedelta(days=rng.randint(0, delta))
 
@@ -150,7 +152,7 @@ class Command(BaseCommand):
                 for _ in range(num_txs):
                     noise = rng.uniform(0.90, 1.10)
                     amount = Decimal(str(round(baseline_amounts[vendor] * noise, 2)))
-                    tx_date = _random_date_in_month(month_start, rng)
+                    tx_date = _random_date_in_month(month_start, rng, max_date=today)
                     transactions.append(
                         Transaction(
                             organization=org,
@@ -166,7 +168,7 @@ class Command(BaseCommand):
         for _ in range(50):
             month_start = rng.choice(month_starts)
             amount = Decimal(str(round(rng.uniform(500.0, 5000.0), 2)))
-            tx_date = _random_date_in_month(month_start, rng)
+            tx_date = _random_date_in_month(month_start, rng, max_date=today)
             transactions.append(
                 Transaction(
                     organization=org,
@@ -186,7 +188,7 @@ class Command(BaseCommand):
             vendor = large_vendors[i % len(large_vendors)]
             amount = Decimal(str(round(rng.uniform(15000.0, 50000.0), 2)))
             month_start = rng.choice(month_starts)
-            tx_date = _random_date_in_month(month_start, rng)
+            tx_date = _random_date_in_month(month_start, rng, max_date=today)
             transactions.append(
                 Transaction(
                     organization=org,
@@ -205,7 +207,7 @@ class Command(BaseCommand):
         for vendor, category in spike_vendors:
             # Add 60% of baseline as an extra charge — safely above the 25% spike threshold
             spike_amount = Decimal(str(round(baseline_amounts[vendor] * 0.60, 2)))
-            tx_date = _random_date_in_month(current_month_start, rng)
+            tx_date = _random_date_in_month(current_month_start, rng, max_date=today)
             transactions.append(
                 Transaction(
                     organization=org,
@@ -231,7 +233,7 @@ class Command(BaseCommand):
         duplicate_transactions: list[Transaction] = []
         for vendor in dup_vendors:
             amount = Decimal(str(round(rng.uniform(100.0, 1500.0), 2)))
-            tx_date = _random_date_in_month(current_month_start, rng)
+            tx_date = _random_date_in_month(current_month_start, rng, max_date=today)
             category = vendor_category.get(vendor, "developer_tools")
             for _ in range(2):  # exact duplicate pair
                 duplicate_transactions.append(

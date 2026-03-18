@@ -12,6 +12,10 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        migrations.RunSQL(
+            sql="UPDATE transactions_transaction SET date = CURRENT_DATE WHERE date > CURRENT_DATE;",
+            reverse_sql=migrations.RunSQL.noop,
+        ),
         migrations.AddConstraint(
             model_name='transaction',
             constraint=models.CheckConstraint(condition=models.Q(('date__lte', django.db.models.functions.datetime.Now())), name='transaction_date_not_future'),
