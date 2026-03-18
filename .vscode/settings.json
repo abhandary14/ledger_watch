@@ -1,0 +1,7 @@
+{
+    "editor.fontFamily": "\"JetBrains Mono\"",
+    "terminal.integrated.fontFamily": "JetBrains Mono",
+    "terminal.integrated.fontSize": 14,
+    "terminal.integrated.customGlyphs": true,
+    "editor.cursorStyle": "block"
+}

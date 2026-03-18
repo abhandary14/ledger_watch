@@ -496,6 +496,7 @@ export function AnalysisPage() {
                   No analysis results found.
                 </p>
               ) : (
+                <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -527,6 +528,7 @@ export function AnalysisPage() {
                     ))}
                   </TableBody>
                 </Table>
+                </div>
               )}
             </CardContent>
           </Card>

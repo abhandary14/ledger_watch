@@ -289,7 +289,7 @@ export function AlertsPage() {
       </div>
 
       {/* Table */}
-      <div className="rounded-md border">
+      <div className="overflow-x-auto rounded-md border">
         {isLoading ? (
           <div className="space-y-px p-4">
             {Array.from({ length: 6 }).map((_, i) => (
