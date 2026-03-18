@@ -29,12 +29,20 @@ export function updateMemberRoleApi(id: string, role: 'admin' | 'employee') {
   return apiClient.patch<OrgMember>(`/api/v1/organizations/members/${id}/`, { role })
 }
 
-export function deleteMemberApi(id: string) {
-  return apiClient.delete<void>(`/api/v1/organizations/members/${id}/`)
+export function getSecurityChallengeApi() {
+  return apiClient.get<{ challenge: string }>('/api/v1/organizations/security-challenge/')
 }
 
-export function transferOwnershipApi(newOwnerId: string) {
+export function deleteMemberApi(id: string, password: string, challenge: string) {
+  return apiClient.delete<void>(`/api/v1/organizations/members/${id}/`, {
+    data: { password, challenge },
+  })
+}
+
+export function transferOwnershipApi(newOwnerId: string, password: string, challenge: string) {
   return apiClient.post<{ transferred: boolean }>('/api/v1/organizations/transfer-ownership/', {
     new_owner_id: newOwnerId,
+    password,
+    challenge,
   })
 }

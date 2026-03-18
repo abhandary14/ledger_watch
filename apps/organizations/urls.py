@@ -10,6 +10,7 @@ from apps.organizations.views import (
     OrgMemberDetailView,
     OrgMemberListCreateView,
     OrganizationDetailView,
+    SecurityChallengeView,
     TransferOwnershipView,
 )
 
@@ -18,4 +19,5 @@ urlpatterns = [
     path("members/", OrgMemberListCreateView.as_view(), name="org-member-list-create"),
     path("members/<uuid:pk>/", OrgMemberDetailView.as_view(), name="org-member-detail"),
     path("transfer-ownership/", TransferOwnershipView.as_view(), name="transfer-ownership"),
+    path("security-challenge/", SecurityChallengeView.as_view(), name="security-challenge"),
 ]

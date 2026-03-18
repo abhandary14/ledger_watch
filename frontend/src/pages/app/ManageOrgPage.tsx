@@ -1,11 +1,11 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { toast } from 'sonner'
-import { UserPlus, Trash2, Crown, Pencil } from 'lucide-react'
+import { UserPlus, Trash2, Crown, Pencil, ArrowUpDown, ArrowUp, ArrowDown, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -42,6 +42,7 @@ import {
   updateMemberRoleApi,
   deleteMemberApi,
   transferOwnershipApi,
+  getSecurityChallengeApi,
   type OrgMember,
 } from '@/api/organizations'
 
@@ -222,10 +223,31 @@ function EditRoleDialog({ member }: { member: OrgMember }) {
 
 function RemoveMemberDialog({ member }: { member: OrgMember }) {
   const [open, setOpen] = useState(false)
+  const [challenge, setChallenge] = useState('')
+  const [password, setPassword] = useState('')
+  const [challengeInput, setChallengeInput] = useState('')
   const queryClient = useQueryClient()
 
+  const { refetch: fetchChallenge, isFetching: isFetchingChallenge } = useQuery({
+    queryKey: ['security-challenge'],
+    queryFn: () => getSecurityChallengeApi().then((r) => r.data.challenge),
+    enabled: false,
+  })
+
+  function handleOpen(value: boolean) {
+    setOpen(value)
+    if (value) {
+      setPassword('')
+      setChallengeInput('')
+      setChallenge('')
+      fetchChallenge().then(({ data }) => {
+        if (data) setChallenge(data)
+      })
+    }
+  }
+
   const { mutate: removeMember, isPending } = useMutation({
-    mutationFn: () => deleteMemberApi(member.id),
+    mutationFn: () => deleteMemberApi(member.id, password, challengeInput),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['org-members'] })
       toast.success('Member removed')
@@ -236,11 +258,17 @@ function RemoveMemberDialog({ member }: { member: OrgMember }) {
         (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
         'Failed to remove member'
       toast.error(msg)
+      // Refresh challenge after failed attempt
+      setChallenge('')
+      setChallengeInput('')
+      fetchChallenge().then(({ data }) => { if (data) setChallenge(data) })
     },
   })
 
+  const canSubmit = password.length > 0 && challengeInput === challenge && challenge.length > 0
+
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpen}>
       <DialogTrigger asChild>
         <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive hover:bg-destructive/10 hover:text-destructive">
           <Trash2 className="size-3.5" />
@@ -251,12 +279,44 @@ function RemoveMemberDialog({ member }: { member: OrgMember }) {
         <DialogHeader>
           <DialogTitle>Remove Member</DialogTitle>
           <DialogDescription>
-            Are you sure you want to remove <strong>{member.email}</strong>? This action cannot be undone.
+            To remove <strong>{member.email}</strong>, confirm your identity below. This action cannot be undone.
           </DialogDescription>
         </DialogHeader>
+        <div className="space-y-4 py-1">
+          <div className="space-y-1.5">
+            <Label htmlFor="rm-password">Your password</Label>
+            <Input
+              id="rm-password"
+              type="password"
+              placeholder="Enter your password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Security challenge</Label>
+            {isFetchingChallenge || !challenge ? (
+              <div className="h-8 animate-pulse rounded bg-muted" />
+            ) : (
+              <code
+                className="block rounded border bg-muted px-3 py-2 font-mono text-sm tracking-widest select-none"
+                onCopy={(e) => e.preventDefault()}
+              >
+                {challenge}
+              </code>
+            )}
+            <p className="text-xs text-muted-foreground">Type the string above exactly to confirm.</p>
+            <Input
+              placeholder="Type the challenge string"
+              value={challengeInput}
+              onChange={(e) => setChallengeInput(e.target.value)}
+              className="font-mono text-sm"
+            />
+          </div>
+        </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-          <Button variant="destructive" onClick={() => removeMember()} disabled={isPending}>
+          <Button variant="destructive" onClick={() => removeMember()} disabled={isPending || !canSubmit}>
             {isPending ? 'Removing…' : 'Remove'}
           </Button>
         </DialogFooter>
@@ -269,13 +329,34 @@ function RemoveMemberDialog({ member }: { member: OrgMember }) {
 
 function TransferOwnershipDialog({ member }: { member: OrgMember }) {
   const [open, setOpen] = useState(false)
+  const [challenge, setChallenge] = useState('')
+  const [password, setPassword] = useState('')
+  const [challengeInput, setChallengeInput] = useState('')
   const { logout } = useAuth()
   const navigate = useNavigate()
 
   const newEmail = `owner@${member.email.split('@')[1]}`
 
+  const { refetch: fetchChallenge, isFetching: isFetchingChallenge } = useQuery({
+    queryKey: ['security-challenge'],
+    queryFn: () => getSecurityChallengeApi().then((r) => r.data.challenge),
+    enabled: false,
+  })
+
+  function handleOpen(value: boolean) {
+    setOpen(value)
+    if (value) {
+      setPassword('')
+      setChallengeInput('')
+      setChallenge('')
+      fetchChallenge().then(({ data }) => {
+        if (data) setChallenge(data)
+      })
+    }
+  }
+
   const { mutate: transfer, isPending } = useMutation({
-    mutationFn: () => transferOwnershipApi(member.id),
+    mutationFn: () => transferOwnershipApi(member.id, password, challengeInput),
     onSuccess: async () => {
       toast.success('Ownership transferred. You have been signed out.')
       setOpen(false)
@@ -287,18 +368,24 @@ function TransferOwnershipDialog({ member }: { member: OrgMember }) {
         (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
         'Failed to transfer ownership'
       toast.error(msg)
+      // Refresh challenge after failed attempt
+      setChallenge('')
+      setChallengeInput('')
+      fetchChallenge().then(({ data }) => { if (data) setChallenge(data) })
     },
   })
 
+  const canSubmit = password.length > 0 && challengeInput === challenge && challenge.length > 0
+
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpen}>
       <DialogTrigger asChild>
         <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-amber-600 hover:bg-amber-50 hover:text-amber-700">
           <Crown className="size-3.5" />
           <span className="sr-only">Transfer ownership</span>
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-sm">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Transfer Ownership</DialogTitle>
           <DialogDescription>
@@ -314,12 +401,44 @@ function TransferOwnershipDialog({ member }: { member: OrgMember }) {
             <li>You will be signed out immediately</li>
           </ul>
         </div>
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="to-password">Your password</Label>
+            <Input
+              id="to-password"
+              type="password"
+              placeholder="Enter your password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Security challenge</Label>
+            {isFetchingChallenge || !challenge ? (
+              <div className="h-8 animate-pulse rounded bg-muted" />
+            ) : (
+              <code
+                className="block rounded border bg-muted px-3 py-2 font-mono text-sm tracking-widest select-none"
+                onCopy={(e) => e.preventDefault()}
+              >
+                {challenge}
+              </code>
+            )}
+            <p className="text-xs text-muted-foreground">Type the string above exactly to confirm.</p>
+            <Input
+              placeholder="Type the challenge string"
+              value={challengeInput}
+              onChange={(e) => setChallengeInput(e.target.value)}
+              className="font-mono text-sm"
+            />
+          </div>
+        </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
           <Button
             variant="destructive"
             onClick={() => transfer()}
-            disabled={isPending}
+            disabled={isPending || !canSubmit}
           >
             {isPending ? 'Transferring…' : 'Transfer & Sign Out'}
           </Button>
@@ -331,13 +450,78 @@ function TransferOwnershipDialog({ member }: { member: OrgMember }) {
 
 // ─── page ─────────────────────────────────────────────────────────────────────
 
+type SortField = 'name' | 'joined'
+type SortDir = 'asc' | 'desc'
+
+function SortIcon({ field, active, dir }: { field: SortField; active: SortField | null; dir: SortDir }) {
+  if (active !== field) return <ArrowUpDown className="ml-1 inline size-3.5 opacity-40" />
+  return dir === 'asc'
+    ? <ArrowUp className="ml-1 inline size-3.5" />
+    : <ArrowDown className="ml-1 inline size-3.5" />
+}
+
 export function ManageOrgPage() {
   const { user } = useAuth()
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  const roleFilter = searchParams.get('role') as OrgMember['role'] | null
+  const sortField = (searchParams.get('sort') as SortField | null) ?? null
+  const sortDir = (searchParams.get('dir') as SortDir | null) ?? 'asc'
+
+  function setParam(key: string, value: string | null) {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      if (value === null) next.delete(key)
+      else next.set(key, value)
+      return next
+    })
+  }
+
+  function toggleSort(field: SortField) {
+    if (sortField === field) {
+      if (sortDir === 'asc') setParam('dir', 'desc')
+      else {
+        setSearchParams((prev) => {
+          const next = new URLSearchParams(prev)
+          next.delete('sort')
+          next.delete('dir')
+          return next
+        })
+      }
+    } else {
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev)
+        next.set('sort', field)
+        next.set('dir', 'asc')
+        return next
+      })
+    }
+  }
 
   const { data: members, isLoading, isError } = useQuery({
     queryKey: ['org-members'],
     queryFn: () => getOrgMembersApi().then((r) => r.data),
   })
+
+  const displayed = (() => {
+    if (!members) return []
+    let list = roleFilter ? members.filter((m) => m.role === roleFilter) : [...members]
+    if (sortField === 'name') {
+      list.sort((a, b) => {
+        const na = `${a.first_name} ${a.last_name}`.trim() || a.email
+        const nb = `${b.first_name} ${b.last_name}`.trim() || b.email
+        return sortDir === 'asc' ? na.localeCompare(nb) : nb.localeCompare(na)
+      })
+    } else if (sortField === 'joined') {
+      list.sort((a, b) => {
+        const diff = new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+        return sortDir === 'asc' ? diff : -diff
+      })
+    }
+    return list
+  })()
+
+  const hasFilters = roleFilter !== null || sortField !== null
 
   return (
     <div className="space-y-6">
@@ -349,6 +533,36 @@ export function ManageOrgPage() {
           </p>
         </div>
         <AddMemberDialog />
+      </div>
+
+      {/* filter bar */}
+      <div className="flex flex-wrap items-center gap-3">
+        <Select
+          value={roleFilter ?? 'all'}
+          onValueChange={(v) => setParam('role', v === 'all' ? null : v)}
+        >
+          <SelectTrigger className="h-8 w-36 text-sm">
+            <SelectValue placeholder="All roles" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All roles</SelectItem>
+            <SelectItem value="owner">Owner</SelectItem>
+            <SelectItem value="admin">Admin</SelectItem>
+            <SelectItem value="employee">Employee</SelectItem>
+          </SelectContent>
+        </Select>
+
+        {hasFilters && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 px-2 text-xs text-muted-foreground"
+            onClick={() => setSearchParams({})}
+          >
+            <X className="mr-1 size-3" />
+            Clear
+          </Button>
+        )}
       </div>
 
       <div className="overflow-x-auto rounded-md border">
@@ -364,19 +578,35 @@ export function ManageOrgPage() {
           </p>
         ) : !members || members.length === 0 ? (
           <p className="py-12 text-center text-sm text-muted-foreground">No members found.</p>
+        ) : displayed.length === 0 ? (
+          <p className="py-12 text-center text-sm text-muted-foreground">No members match the current filter.</p>
         ) : (
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Name</TableHead>
+                <TableHead>
+                  <button
+                    className="flex items-center font-medium hover:text-foreground"
+                    onClick={() => toggleSort('name')}
+                  >
+                    Name <SortIcon field="name" active={sortField} dir={sortDir} />
+                  </button>
+                </TableHead>
                 <TableHead>Email</TableHead>
                 <TableHead>Role</TableHead>
-                <TableHead>Joined</TableHead>
+                <TableHead>
+                  <button
+                    className="flex items-center font-medium hover:text-foreground"
+                    onClick={() => toggleSort('joined')}
+                  >
+                    Joined <SortIcon field="joined" active={sortField} dir={sortDir} />
+                  </button>
+                </TableHead>
                 <TableHead className="w-28">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {members.map((member) => (
+              {displayed.map((member) => (
                 <TableRow key={member.id}>
                   <TableCell className="font-medium">
                     {member.first_name || member.last_name
