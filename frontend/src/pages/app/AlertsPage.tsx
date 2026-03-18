@@ -22,7 +22,8 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
-import { getAlertsApi, acknowledgeAlertApi, resolveAlertApi, type Alert } from '@/api/alerts'
+import { getAlertsApi, acknowledgeAlertApi, resolveAlertApi, reopenAlertApi, type Alert } from '@/api/alerts'
+import { useAuth } from '@/hooks/use-auth'
 
 // ─── constants ───────────────────────────────────────────────────────────────
 
@@ -110,6 +111,8 @@ function AlertMessage({ message }: { message: string }) {
 export function AlertsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const queryClient = useQueryClient()
+  const { user } = useAuth()
+  const canReopen = user?.role === 'owner' || user?.role === 'admin'
   const [selected, setSelected] = useState<Set<string>>(new Set())
 
   const filterStatus = searchParams.get('status') ?? ''
@@ -171,6 +174,16 @@ export function AlertsPage() {
       toast.success('Alert resolved')
     },
     onError: () => toast.error('Failed to resolve alert'),
+  })
+
+  const { mutate: reopen, isPending: reopening } = useMutation({
+    mutationFn: (id: string) => reopenAlertApi(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['alerts'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      toast.success('Alert reopened')
+    },
+    onError: () => toast.error('Failed to reopen alert'),
   })
 
   async function acknowledgeAll() {
@@ -398,6 +411,17 @@ export function AlertsPage() {
                           onClick={() => resolve(alert.id)}
                         >
                           Resolve
+                        </Button>
+                      )}
+                      {alert.status === 'RESOLVED' && canReopen && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 px-2 text-xs"
+                          disabled={reopening}
+                          onClick={() => reopen(alert.id)}
+                        >
+                          Reopen
                         </Button>
                       )}
                     </div>

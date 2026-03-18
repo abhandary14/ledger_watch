@@ -39,6 +39,9 @@ class RegisterView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        local_part = email.split("@")[0].lower()
+        role = User.Role.OWNER if local_part == "owner" else User.Role.EMPLOYEE
+
         try:
             with db_transaction.atomic():
                 org = Organization.objects.create(name=org_name)
@@ -46,7 +49,7 @@ class RegisterView(APIView):
                     email=email,
                     password=password,
                     organization=org,
-                    role=User.Role.OWNER,
+                    role=role,
                 )
                 AuditLog.objects.create(
                     organization=org,

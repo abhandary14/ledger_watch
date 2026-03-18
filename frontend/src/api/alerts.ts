@@ -32,3 +32,7 @@ export function acknowledgeAlertApi(id: string) {
 export function resolveAlertApi(id: string) {
   return apiClient.post<Alert>(`/api/v1/alerts/${id}/resolve`)
 }
+
+export function reopenAlertApi(id: string) {
+  return apiClient.post<Alert>(`/api/v1/alerts/${id}/reopen`)
+}

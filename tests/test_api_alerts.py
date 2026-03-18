@@ -189,3 +189,88 @@ class TestAlertResolveAPI:
         url = f"/api/v1/alerts/{uuid.uuid4()}/resolve"
         response = auth_client.post(url, format="json")
         assert response.status_code == 404
+
+
+@pytest.fixture
+def resolved_alert(org):
+    return Alert.objects.create(
+        organization=org,
+        alert_type="burn_rate",
+        severity=Alert.Severity.HIGH,
+        message="Resolved test alert",
+        status=Alert.Status.RESOLVED,
+    )
+
+
+@pytest.mark.django_db
+class TestAlertReopenAPI:
+    def test_reopen_resolved_alert_returns_200(self, auth_client, resolved_alert):
+        url = f"/api/v1/alerts/{resolved_alert.id}/reopen"
+        response = auth_client.post(url, format="json")
+        assert response.status_code == 200
+
+    def test_unauthenticated_returns_401(self, api_client, resolved_alert):
+        url = f"/api/v1/alerts/{resolved_alert.id}/reopen"
+        response = api_client.post(url, format="json")
+        assert response.status_code == 401
+
+    def test_employee_cannot_reopen(self, org, resolved_alert):
+        from apps.users.models import User
+        from rest_framework.test import APIClient
+
+        employee = User.objects.create_user(
+            email="employee2@testcorp.com",
+            password="testpassword123",
+            organization=org,
+            role=User.Role.EMPLOYEE,
+        )
+        client = APIClient()
+        client.force_authenticate(user=employee)
+        url = f"/api/v1/alerts/{resolved_alert.id}/reopen"
+        response = client.post(url, format="json")
+        assert response.status_code == 403
+
+    def test_reopen_updates_status_to_open(self, auth_client, resolved_alert):
+        url = f"/api/v1/alerts/{resolved_alert.id}/reopen"
+        auth_client.post(url, format="json")
+        resolved_alert.refresh_from_db()
+        assert resolved_alert.status == Alert.Status.OPEN
+
+    def test_reopen_returns_updated_alert_data(self, auth_client, resolved_alert):
+        url = f"/api/v1/alerts/{resolved_alert.id}/reopen"
+        response = auth_client.post(url, format="json")
+        assert response.data["status"] == "OPEN"
+        assert str(response.data["id"]) == str(resolved_alert.id)
+
+    def test_reopen_open_alert_returns_409(self, auth_client, open_alert):
+        url = f"/api/v1/alerts/{open_alert.id}/reopen"
+        response = auth_client.post(url, format="json")
+        assert response.status_code == 409
+
+    def test_reopen_acknowledged_alert_returns_409(self, auth_client, org):
+        alert = Alert.objects.create(
+            organization=org,
+            alert_type="duplicate",
+            severity=Alert.Severity.LOW,
+            message="Acked alert",
+            status=Alert.Status.ACKNOWLEDGED,
+        )
+        url = f"/api/v1/alerts/{alert.id}/reopen"
+        response = auth_client.post(url, format="json")
+        assert response.status_code == 409
+
+    def test_reopen_nonexistent_alert_returns_404(self, auth_client):
+        url = f"/api/v1/alerts/{uuid.uuid4()}/reopen"
+        response = auth_client.post(url, format="json")
+        assert response.status_code == 404
+
+    def test_reopen_writes_audit_log(self, auth_client, resolved_alert):
+        from apps.audit.models import AuditLog
+
+        url = f"/api/v1/alerts/{resolved_alert.id}/reopen"
+        auth_client.post(url, format="json")
+        assert AuditLog.objects.filter(
+            organization=resolved_alert.organization,
+            event_type="ALERT_REOPENED",
+            metadata__alert_id=str(resolved_alert.id),
+        ).exists()
