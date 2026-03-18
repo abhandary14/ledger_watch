@@ -253,13 +253,12 @@ pipeline {
             }
         }
 
-        // ── 9. Run Migrations ──────────────────────────────────────────────────
-        // Writes a temporary config/.env from Jenkins credentials so that
-        // docker-compose can source it, then runs Django migrations.
-        // The .env file is always deleted in post { always { } } below.
-        stage('Run Migrations') {
+        // ── 9. Deploy ─────────────────────────────────────────────────────────
+        // Writes a temporary config/.env from Jenkins credentials, then brings
+        // up the full stack. The api container's entrypoint runs migrations
+        // automatically before starting gunicorn.
+        stage('Deploy') {
             steps {
-                // Ensure the compose postgres container is running
                 script {
                     writeFile file: 'config/.env', text: [
                         "SECRET_KEY=${env.SECRET_KEY}",
@@ -272,31 +271,6 @@ pipeline {
                         "DB_PORT=5432",
                     ].join('\n') + '\n'
                 }
-                sh 'docker compose -f docker-compose.yml up -d postgres'
-                // Wait for postgres to be ready
-                sh """
-                    ready=0
-                    for i in \$(seq 1 30); do
-                        docker compose -f docker-compose.yml exec postgres pg_isready -U ledger -d ledgerwatch && ready=1 && break || true
-                        echo "  postgres not ready yet (\$i/30)..."
-                        sleep 2
-                    done
-                    if [ "\$ready" -eq 0 ]; then
-                        echo "ERROR: compose postgres did not become ready after 60 s"
-                        exit 1
-                    fi
-                """
-                sh "docker compose -f docker-compose.yml run --rm api python manage.py migrate --noinput"
-            }
-        }
-
-        // ── 10. Deploy ─────────────────────────────────────────────────────────
-        // Brings up (or restarts) the full stack with the freshly-built image.
-        // docker compose up -d --build is idempotent: running containers are left alone,
-        // only containers whose image changed are recreated; --build ensures the
-        // frontend image is always rebuilt so changes are picked up on redeployment.
-        stage('Deploy') {
-            steps {
                 sh "docker compose -f docker-compose.yml up -d --build"
                 echo "Deployed — App: http://localhost | API: http://localhost:8000 | Docs: http://localhost:8000/api/docs/"
             }
