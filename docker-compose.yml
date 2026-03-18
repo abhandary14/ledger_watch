@@ -26,6 +26,7 @@ services:
       - ./config/.env
     environment:
       DB_HOST: postgres
+      DB_PORT: 5432
     ports:
       - "8000:8000"
     depends_on:
