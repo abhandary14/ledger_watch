@@ -291,7 +291,7 @@ export function DashboardPage() {
                     width={56}
                   />
                   <Tooltip
-                    formatter={(value: number) => [formatUSD(value), 'Spend']}
+                    formatter={(value) => [formatUSD(value as number), 'Spend']}
                     contentStyle={{ fontSize: 12 }}
                   />
                   <Line
