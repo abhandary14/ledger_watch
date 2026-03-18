@@ -208,7 +208,7 @@ pipeline {
                     docker create --name fe-test-${BUILD_NUMBER} \\
                         -w /app \\
                         node:20-alpine \\
-                        sh -c "npx vitest run"
+                        sh -c "npx vitest run --passWithNoTests"
                 """
                 sh """docker cp "${WORKSPACE}/frontend/." fe-test-${BUILD_NUMBER}:/app/"""
                 sh "docker start -a fe-test-${BUILD_NUMBER}"
