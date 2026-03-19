@@ -140,7 +140,8 @@ export function AlertsPage() {
   const sortDir = (searchParams.get('sort') ?? 'desc') as 'asc' | 'desc'
   const page = parseInt(searchParams.get('page') ?? '1', 10)
   const pageSizeParam = searchParams.get('page_size') ?? '25'
-  const pageSize = pageSizeParam === 'all' ? 1000 : parseInt(pageSizeParam, 10)
+  // 'all' is passed as-is to the backend; null avoids division in totalPages.
+  const pageSize = pageSizeParam === 'all' ? null : parseInt(pageSizeParam, 10)
 
   const hasFilters = !!(filterStatus || filterSeverity || filterType)
 
@@ -185,7 +186,7 @@ export function AlertsPage() {
     isLoading,
     isError,
   } = useQuery({
-    queryKey: ['alerts', filterStatus, filterSeverity, filterType, sortDir, page, pageSize],
+    queryKey: ['alerts', filterStatus, filterSeverity, filterType, sortDir, page, pageSizeParam],
     queryFn: () =>
       getAlertsApi({
         status: filterStatus || undefined,
@@ -193,7 +194,7 @@ export function AlertsPage() {
         alert_type: filterType || undefined,
         ordering: sortDir === 'asc' ? 'created_at' : '-created_at',
         page,
-        page_size: pageSize,
+        page_size: pageSizeParam,  // send 'all' literally when selected
       }).then((r) => r.data),
   })
 
@@ -267,7 +268,7 @@ export function AlertsPage() {
   }
 
   const alerts = alertsData?.results ?? []
-  const totalPages = alertsData ? Math.max(1, Math.ceil(alertsData.count / pageSize)) : 1
+  const totalPages = alertsData && pageSize ? Math.max(1, Math.ceil(alertsData.count / pageSize)) : 1
   const openAlerts = alerts.filter((a) => a.status === 'OPEN')
 
   function toggleSelect(id: string) {

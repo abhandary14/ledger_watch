@@ -22,7 +22,7 @@ export function getAlertsApi(params: {
   status?: string
   ordering?: string
   page?: number
-  page_size?: number
+  page_size?: number | string
 }) {
   return apiClient.get<PaginatedResponse<Alert>>('/api/v1/alerts/', { params })
 }
