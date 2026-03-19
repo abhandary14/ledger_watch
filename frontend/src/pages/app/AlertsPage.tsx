@@ -4,8 +4,9 @@ import { useColumnResize } from '@/hooks/use-column-resize'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { ChevronLeft, ChevronRight, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ArrowUp, ArrowDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -130,6 +131,7 @@ export function AlertsPage() {
   const canReopen = user?.role === 'owner' || user?.role === 'admin'
   const canDelete = user?.role === 'owner' || user?.role === 'admin'
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [alertToDelete, setAlertToDelete] = useState<string | null>(null)
 
   // column widths: checkbox, Severity, Type, Message, Created, Status, Actions
   const { widths: colW, sumPx, startResize, containerRef } = useColumnResize([40, 90, 140, 300, 90, 110, 200])
@@ -234,7 +236,7 @@ export function AlertsPage() {
       queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       toast.success('Alert reopened')
     },
-    onError: () => toast.error('Failed to reopen alert'),
+    onError: (err: unknown) => handleApiError(err, 'Failed to reopen alert'),
   })
 
   const { mutate: deleteAlert, isPending: deleting } = useMutation({
@@ -244,7 +246,7 @@ export function AlertsPage() {
       queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       toast.success('Alert deleted')
     },
-    onError: () => toast.error('Failed to delete alert'),
+    onError: (err: unknown) => handleApiError(err, 'Failed to delete alert'),
   })
 
   async function acknowledgeAll() {
@@ -283,6 +285,7 @@ export function AlertsPage() {
   }
 
   return (
+    <>
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">Alerts</h1>
@@ -422,9 +425,7 @@ export function AlertsPage() {
                     Created
                     {sortDir === 'desc'
                       ? <ArrowDown className="size-3.5" />
-                      : sortDir === 'asc'
-                        ? <ArrowUp className="size-3.5" />
-                        : <ArrowUpDown className="size-3.5 opacity-40" />}
+                      : <ArrowUp className="size-3.5" />}
                   </button>
                   <ResizeHandle onMouseDown={(e) => startResize(4, e)} />
                 </TableHead>
@@ -518,7 +519,7 @@ export function AlertsPage() {
                           size="sm"
                           className="h-7 px-2 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
                           disabled={deleting}
-                          onClick={() => deleteAlert(alert.id)}
+                          onClick={() => setAlertToDelete(alert.id)}
                         >
                           Delete
                         </Button>
@@ -576,5 +577,25 @@ export function AlertsPage() {
         </div>
       )}
     </div>
+
+    <Dialog open={alertToDelete !== null} onOpenChange={(open) => { if (!open) setAlertToDelete(null) }}>
+      <DialogContent showCloseButton={false}>
+        <DialogHeader>
+          <DialogTitle>Delete alert?</DialogTitle>
+          <DialogDescription>This action cannot be undone.</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setAlertToDelete(null)}>Cancel</Button>
+          <Button
+            variant="destructive"
+            disabled={deleting}
+            onClick={() => { if (alertToDelete) { deleteAlert(alertToDelete); setAlertToDelete(null) } }}
+          >
+            Delete
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   )
 }
