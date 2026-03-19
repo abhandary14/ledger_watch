@@ -1,6 +1,5 @@
 import secrets
 
-from django.core.cache import cache
 from django.db import IntegrityError
 from django.db import transaction as db_transaction
 from drf_spectacular.utils import OpenApiResponse, extend_schema
@@ -11,37 +10,26 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
 
 from apps.audit.models import AuditLog
-from apps.organizations.models import Organization
+from apps.organizations.models import Organization, SecurityChallenge
 from apps.users.models import User
 from apps.users.permissions import IsOwner
 from apps.users.serializers import CreateMemberSerializer, OrgMemberSerializer, UpdateMemberRoleSerializer
 
-CHALLENGE_TTL = 300  # 5 minutes
-
-
-def _generate_challenge(user_id: str) -> str:
-    """Generate a unique 32-char hex challenge token and store it in cache."""
-    token = secrets.token_hex(8)  # 16 hex characters
-    cache.set(f"security_challenge_{user_id}", token, timeout=CHALLENGE_TTL)
-    return token
 
 
 def _validate_and_consume_challenge(user, password: str, challenge: str) -> str | None:
     """
     Validate password + challenge. Returns None on success, or an error string.
-    Consumes the challenge on success so it can't be reused.
+
+    Challenge consumption is a single atomic DB DELETE so two concurrent
+    requests cannot both validate the same token.
     """
     if not password or not challenge:
         return "password and challenge are required."
     if not user.check_password(password):
         return "Password is incorrect."
-    key = f"security_challenge_{user.id}"
-    stored = cache.get(key)
-    if stored is None:
-        return "Challenge has expired. Please request a new one."
-    if not secrets.compare_digest(stored, challenge):
-        return "Challenge string does not match."
-    cache.delete(key)
+    if not SecurityChallenge.consume(user, challenge):
+        return "Challenge has expired or does not match. Please request a new one."
     return None
 
 
@@ -72,7 +60,7 @@ class SecurityChallengeView(APIView):
     GET /api/v1/organizations/security-challenge/
 
     Generates a fresh 32-character challenge token for the authenticated owner.
-    The token is stored server-side (5-minute TTL) and must be submitted alongside
+    The token is persisted in the DB (5-minute TTL) and must be submitted alongside
     the owner's password when performing destructive actions (delete member, transfer ownership).
     """
 
@@ -84,7 +72,7 @@ class SecurityChallengeView(APIView):
         responses={200: OpenApiResponse(description="Returns a 32-char challenge string.")},
     )
     def get(self, request):
-        token = _generate_challenge(str(request.user.id))
+        token = SecurityChallenge.issue(request.user)
         return Response({"challenge": token})
 
 
