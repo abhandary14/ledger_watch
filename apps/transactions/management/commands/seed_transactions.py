@@ -101,10 +101,16 @@ class Command(BaseCommand):
             default=False,
             help="Delete all existing transactions for the target org before seeding.",
         )
+        parser.add_argument(
+            "--seed",
+            type=int,
+            default=None,
+            help="Integer random seed for reproducible data generation (omit for random output).",
+        )
 
     def handle(self, *args, **options):
         fake = Faker()
-        rng = random.Random(42)
+        rng = random.Random(options["seed"])
 
         org_name: str = options["org"]
         do_clear: bool = options["clear"]

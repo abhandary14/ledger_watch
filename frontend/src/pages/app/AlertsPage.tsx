@@ -89,23 +89,33 @@ function StatusBadge({ status }: { status: Alert['status'] }) {
 // ─── expandable message ───────────────────────────────────────────────────────
 
 function AlertMessage({ message }: { message: string }) {
-  const [expanded, setExpanded] = useState(false)
+  const [open, setOpen] = useState(false)
   const isLong = message.length > 120
   return (
-    <div>
-      <p className={cn('text-sm', !expanded && isLong && 'line-clamp-2')}>{message}</p>
-      {isLong && (
-        <button
-          className="mt-0.5 text-xs text-primary hover:underline"
-          onClick={(e) => {
-            e.stopPropagation()
-            setExpanded((v) => !v)
-          }}
-        >
-          {expanded ? 'Show less' : 'Show more'}
-        </button>
-      )}
-    </div>
+    <>
+      <div>
+        <p className="line-clamp-2 text-sm">{message}</p>
+        {isLong && (
+          <button
+            className="mt-0.5 text-xs text-primary hover:underline"
+            onClick={(e) => {
+              e.stopPropagation()
+              setOpen(true)
+            }}
+          >
+            Show more
+          </button>
+        )}
+      </div>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Alert Message</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm leading-relaxed">{message}</p>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }
 
