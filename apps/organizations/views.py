@@ -1,13 +1,11 @@
-import secrets
-
 from django.db import IntegrityError
 from django.db import transaction as db_transaction
+from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
 
 from apps.audit.models import AuditLog
 from apps.organizations.models import Organization, SecurityChallenge
@@ -203,7 +201,6 @@ class OrgMemberDetailView(APIView):
     permission_classes = [IsOwner]
 
     def _get_member(self, request, pk):
-        from django.shortcuts import get_object_or_404
         member = get_object_or_404(
             User.objects.filter(organization_id=request.user.organization_id),
             pk=pk,
@@ -321,8 +318,6 @@ class TransferOwnershipView(APIView):
         },
     )
     def post(self, request):
-        from django.shortcuts import get_object_or_404
-
         err = _validate_and_consume_challenge(
             request.user,
             request.data.get("password", ""),
