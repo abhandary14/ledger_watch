@@ -93,6 +93,12 @@ class OrganizationDetailView(APIView):
         summary="Update organization name",
     )
     def patch(self, request, pk):
+        if request.user.role != request.user.Role.OWNER:
+            return Response(
+                {"detail": "Only the organization owner can rename the organization."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         org = self.get_object(pk, request.user)
         if org is None:
             return Response(

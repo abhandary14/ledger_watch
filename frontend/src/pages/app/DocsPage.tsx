@@ -324,7 +324,7 @@ export function DocsPage() {
 
           <Sub title="Rows per Page">
             <p>Use the <strong className="text-foreground">Rows per page</strong> dropdown at the bottom of the table to display 25, 50, 100, or all transactions at once. The setting is saved in the URL.</p>
-            <Note variant="tip">Selecting <strong>All</strong> loads up to 1,000 rows at once. For very large datasets use filters to narrow results before selecting All.</Note>
+            <Note variant="tip">Selecting <strong>All</strong> fetches every row in the dataset. For very large datasets, use filters to narrow results before selecting All.</Note>
           </Sub>
         </Section>
 
