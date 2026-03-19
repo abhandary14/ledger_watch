@@ -57,11 +57,13 @@ class OrgDirectoryView(APIView):
 
 class SecurityChallengeView(APIView):
     """
-    GET /api/v1/organizations/security-challenge/
+    POST /api/v1/organizations/security-challenge/
 
     Generates a fresh 32-character challenge token for the authenticated owner.
     The token is persisted in the DB (5-minute TTL) and must be submitted alongside
     the owner's password when performing destructive actions (delete member, transfer ownership).
+
+    POST (not GET) because issuing a token is a state-mutating operation.
     """
 
     permission_classes = [IsOwner]
@@ -71,7 +73,7 @@ class SecurityChallengeView(APIView):
         summary="Generate a security challenge token",
         responses={200: OpenApiResponse(description="Returns a 32-char challenge string.")},
     )
-    def get(self, request):
+    def post(self, request):
         token = SecurityChallenge.issue(request.user)
         return Response({"challenge": token})
 
@@ -360,31 +362,39 @@ class TransferOwnershipView(APIView):
 
         old_owner = request.user
 
-        with db_transaction.atomic():
-            # Write audit log BEFORE mutating either row so real emails are captured.
-            AuditLog.objects.create(
-                organization_id=old_owner.organization_id,
-                event_type="OWNERSHIP_TRANSFERRED",
-                metadata={
-                    "old_owner_id": str(old_owner.id),
-                    "old_owner_email": old_owner.email,
-                    "new_owner_id": str(new_owner.id),
-                    "new_owner_email": new_email,
-                },
+        try:
+            with db_transaction.atomic():
+                # Write audit log BEFORE mutating either row so real emails are captured.
+                AuditLog.objects.create(
+                    organization_id=old_owner.organization_id,
+                    event_type="OWNERSHIP_TRANSFERRED",
+                    metadata={
+                        "old_owner_id": str(old_owner.id),
+                        "old_owner_email": old_owner.email,
+                        "new_owner_id": str(new_owner.id),
+                        "new_owner_email": new_email,
+                    },
+                )
+
+                # Free the old owner's email slot FIRST so the unique constraint is
+                # never violated when new_owner claims new_email (which may equal the
+                # old owner's current email when both share the same domain).
+                # Use an RFC 2606-reserved domain so the address passes email validators.
+                old_owner.email = f"deleted-{old_owner.id}@example.invalid"
+                old_owner.save(update_fields=["email"])
+
+                # Promote new owner now that the email slot is free.
+                new_owner.email = new_email
+                new_owner.role = User.Role.OWNER
+                new_owner.save(update_fields=["email", "role"])
+
+                # Delete old owner — cascades to OutstandingToken, invalidating sessions.
+                old_owner.delete()
+
+        except IntegrityError:
+            return Response(
+                {"detail": f"Email {new_email} is already in use by another account."},
+                status=status.HTTP_400_BAD_REQUEST,
             )
-
-            # Free the old owner's email slot FIRST so the unique constraint is
-            # never violated when new_owner claims new_email (which may equal the
-            # old owner's current email when both share the same domain).
-            old_owner.email = f"deleted-{old_owner.id}@deleted"
-            old_owner.save(update_fields=["email"])
-
-            # Promote new owner now that the email slot is free.
-            new_owner.email = new_email
-            new_owner.role = User.Role.OWNER
-            new_owner.save(update_fields=["email", "role"])
-
-            # Delete old owner — cascades to OutstandingToken, invalidating sessions.
-            old_owner.delete()
 
         return Response({"transferred": True}, status=status.HTTP_200_OK)

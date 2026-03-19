@@ -34,7 +34,7 @@ export function getOrgDirectoryApi() {
 }
 
 export function getSecurityChallengeApi() {
-  return apiClient.get<{ challenge: string }>('/api/v1/organizations/security-challenge/')
+  return apiClient.post<{ challenge: string }>('/api/v1/organizations/security-challenge/')
 }
 
 export function deleteMemberApi(id: string, password: string, challenge: string) {
