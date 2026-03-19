@@ -140,8 +140,7 @@ export function AlertsPage() {
   const sortDir = (searchParams.get('sort') ?? 'desc') as 'asc' | 'desc'
   const page = parseInt(searchParams.get('page') ?? '1', 10)
   const pageSizeParam = searchParams.get('page_size') ?? '25'
-  // 'all' is passed as-is to the backend; null avoids division in totalPages.
-  const pageSize = pageSizeParam === 'all' ? null : parseInt(pageSizeParam, 10)
+  const pageSize = Math.min(Math.max(parseInt(pageSizeParam, 10) || 25, 1), 1000)
 
   const hasFilters = !!(filterStatus || filterSeverity || filterType)
 
@@ -186,7 +185,7 @@ export function AlertsPage() {
     isLoading,
     isError,
   } = useQuery({
-    queryKey: ['alerts', filterStatus, filterSeverity, filterType, sortDir, page, pageSizeParam],
+    queryKey: ['alerts', filterStatus, filterSeverity, filterType, sortDir, page, pageSize],
     queryFn: () =>
       getAlertsApi({
         status: filterStatus || undefined,
@@ -194,7 +193,7 @@ export function AlertsPage() {
         alert_type: filterType || undefined,
         ordering: sortDir === 'asc' ? 'created_at' : '-created_at',
         page,
-        page_size: pageSizeParam,  // send 'all' literally when selected
+        page_size: pageSize,
       }).then((r) => r.data),
   })
 
@@ -268,7 +267,7 @@ export function AlertsPage() {
   }
 
   const alerts = alertsData?.results ?? []
-  const totalPages = alertsData && pageSize ? Math.max(1, Math.ceil(alertsData.count / pageSize)) : 1
+  const totalPages = alertsData ? Math.max(1, Math.ceil(alertsData.count / pageSize)) : 1
   const openAlerts = alerts.filter((a) => a.status === 'OPEN')
 
   function toggleSelect(id: string) {
@@ -551,11 +550,10 @@ export function AlertsPage() {
                 <SelectItem value="25">25</SelectItem>
                 <SelectItem value="50">50</SelectItem>
                 <SelectItem value="100">100</SelectItem>
-                <SelectItem value="all">All</SelectItem>
               </SelectContent>
             </Select>
           </div>
-          {pageSizeParam !== 'all' && totalPages > 1 && (
+          {totalPages > 1 && (
             <div className="flex items-center gap-2">
               <Button
                 variant="outline"
