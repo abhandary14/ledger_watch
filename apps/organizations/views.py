@@ -367,7 +367,7 @@ class TransferOwnershipView(APIView):
         old_owner = request.user
 
         with db_transaction.atomic():
-            # Write audit log BEFORE deleting old owner (org still has a user)
+            # Write audit log BEFORE mutating either row so real emails are captured.
             AuditLog.objects.create(
                 organization_id=old_owner.organization_id,
                 event_type="OWNERSHIP_TRANSFERRED",
@@ -379,13 +379,18 @@ class TransferOwnershipView(APIView):
                 },
             )
 
-            # Promote new owner (do this BEFORE deleting old owner to avoid
-            # momentarily having no owner, which could trigger constraint issues)
+            # Free the old owner's email slot FIRST so the unique constraint is
+            # never violated when new_owner claims new_email (which may equal the
+            # old owner's current email when both share the same domain).
+            old_owner.email = f"deleted-{old_owner.id}@deleted"
+            old_owner.save(update_fields=["email"])
+
+            # Promote new owner now that the email slot is free.
             new_owner.email = new_email
             new_owner.role = User.Role.OWNER
             new_owner.save(update_fields=["email", "role"])
 
-            # Delete old owner — cascades to OutstandingToken, invalidating sessions
+            # Delete old owner — cascades to OutstandingToken, invalidating sessions.
             old_owner.delete()
 
         return Response({"transferred": True}, status=status.HTTP_200_OK)
