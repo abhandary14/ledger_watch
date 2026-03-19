@@ -93,13 +93,13 @@ class TransactionListView(ListAPIView):
     serializer_class = TransactionSerializer
     filterset_class = TransactionFilter
     filter_backends = [DjangoFilterBackend, OrderingFilter]
-    ordering_fields = ['date', 'amount']
+    ordering_fields = ['date', 'amount', 'created_at']
     ordering = ['-date', '-created_at']
 
     def get_queryset(self):
         return Transaction.objects.select_related("organization").filter(
             organization_id=self.request.user.organization_id
-        )
+        ).order_by('-date', '-created_at')
 
 
 @extend_schema(
