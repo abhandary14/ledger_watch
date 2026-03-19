@@ -138,7 +138,7 @@ export function AlertsPage() {
   const filterSeverity = searchParams.get('severity') ?? ''
   const filterType = searchParams.get('alert_type') ?? ''
   const sortDir = (searchParams.get('sort') ?? 'desc') as 'asc' | 'desc'
-  const page = parseInt(searchParams.get('page') ?? '1', 10)
+  const page = Math.max(parseInt(searchParams.get('page') ?? '1', 10) || 1, 1)
   const pageSizeParam = searchParams.get('page_size') ?? '25'
   const pageSize = Math.min(Math.max(parseInt(pageSizeParam, 10) || 25, 1), 1000)
 
@@ -197,6 +197,15 @@ export function AlertsPage() {
       }).then((r) => r.data),
   })
 
+  function handleApiError(err: unknown, fallbackMessage: string) {
+    const status = (err as { response?: { status?: number } })?.response?.status
+    if (status === 403) {
+      toast.error('This action can only be performed by an admin or owner. Contact your admin.')
+    } else {
+      toast.error(fallbackMessage)
+    }
+  }
+
   const { mutate: acknowledge, isPending: acknowledging } = useMutation({
     mutationFn: (id: string) => acknowledgeAlertApi(id),
     onSuccess: (_, id) => {
@@ -205,14 +214,7 @@ export function AlertsPage() {
       setSelected((s) => { const n = new Set(s); n.delete(id); return n })
       toast.success('Alert acknowledged')
     },
-    onError: (err: unknown) => {
-      const status = (err as { response?: { status?: number } })?.response?.status
-      if (status === 403) {
-        toast.error('This action can only be performed by an admin or owner. Contact your admin.')
-      } else {
-        toast.error('Failed to acknowledge alert')
-      }
-    },
+    onError: (err: unknown) => handleApiError(err, 'Failed to acknowledge alert'),
   })
 
   const { mutate: resolve, isPending: resolving } = useMutation({
@@ -222,14 +224,7 @@ export function AlertsPage() {
       queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       toast.success('Alert resolved')
     },
-    onError: (err: unknown) => {
-      const status = (err as { response?: { status?: number } })?.response?.status
-      if (status === 403) {
-        toast.error('This action can only be performed by an admin or owner. Contact your admin.')
-      } else {
-        toast.error('Failed to resolve alert')
-      }
-    },
+    onError: (err: unknown) => handleApiError(err, 'Failed to resolve alert'),
   })
 
   const { mutate: reopen, isPending: reopening } = useMutation({
