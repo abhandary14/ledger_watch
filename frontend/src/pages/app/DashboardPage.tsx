@@ -27,6 +27,7 @@ import {
   getLatestAnalysisApi,
   acknowledgeAlertApi,
   type Alert,
+  type Transaction,
 } from '@/api/dashboard'
 
 // ─── helpers ────────────────────────────────────────────────────────────────
@@ -165,12 +166,31 @@ export function DashboardPage() {
 
   const { data: txnChart, isLoading: loadingChart, isError: errorChart } = useQuery({
     queryKey: ['dashboard', 'transactionsChart', chartDateFrom, chartDateTo],
-    queryFn: () =>
-      getTransactionsApi({
-        date_from: chartDateFrom,
-        date_to: chartDateTo,
-        page_size: '1000',
-      }).then((r) => r.data),
+    queryFn: async () => {
+      const PAGE_SIZE = '200'
+      const MAX_PAGES = 20  // hard cap — prevents runaway loops
+      const allResults: Transaction[] = []
+      let page = 1
+      let totalCount = 0
+
+      for (let i = 0; i < MAX_PAGES; i++) {
+        const res = await getTransactionsApi({
+          date_from: chartDateFrom,
+          date_to: chartDateTo,
+          page_size: PAGE_SIZE,
+          page: String(page),
+        })
+        const data = res.data
+        totalCount = data.count
+        allResults.push(...data.results)
+
+        // Stop when the backend signals no further pages or we have every row
+        if (!data.next || allResults.length >= totalCount) break
+        page++
+      }
+
+      return { count: totalCount, next: null, previous: null, results: allResults }
+    },
     enabled: chartRange !== 'CUSTOM' || !!(customFrom && customTo),
   })
 
