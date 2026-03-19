@@ -23,8 +23,10 @@ from django.db import transaction
 
 from apps.analytics.models import AnalysisRun
 from apps.audit.models import AuditLog
+from apps.transactions.models import Transaction
 from factories.analyzer_factory import AnalyzerFactory
 from services.alert_service import AlertService
+from services.exceptions import AlreadyCurrentError
 
 
 class AnalysisService:
@@ -57,6 +59,28 @@ class AnalysisService:
         # Validate the analyzer type early — before creating any DB record —
         # so an unknown type returns a clean 400, not a FAILED AnalysisRun.
         analyzer = AnalyzerFactory.create(analysis_type)  # raises ValueError if unknown
+
+        # Guard: skip re-analysis if no new transactions have been imported since
+        # the last successful run of this type.
+        latest_tx = (
+            Transaction.objects.filter(organization_id=organization_id)
+            .order_by("-created_at")
+            .values("created_at")
+            .first()
+        )
+        if latest_tx is not None:
+            last_succeeded = (
+                AnalysisRun.objects.filter(
+                    organization_id=organization_id,
+                    analysis_type=analysis_type,
+                    status=AnalysisRun.Status.SUCCEEDED,
+                )
+                .order_by("-run_time")
+                .values("run_time")
+                .first()
+            )
+            if last_succeeded and last_succeeded["run_time"] >= latest_tx["created_at"]:
+                raise AlreadyCurrentError(analysis_type)
 
         with transaction.atomic():
             run = AnalysisRun.objects.create(

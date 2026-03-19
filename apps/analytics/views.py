@@ -19,6 +19,7 @@ from apps.analytics.models import AnalysisRun
 from apps.analytics.serializers import AnalysisRunRequestSerializer, AnalysisRunSerializer
 from apps.users.permissions import IsAdminOrOwner
 from services.analysis_service import AnalysisService
+from services.exceptions import AlreadyCurrentError
 
 
 class AnalysisRunView(APIView):
@@ -45,6 +46,7 @@ class AnalysisRunView(APIView):
         responses={
             201: AnalysisRunSerializer,
             400: OpenApiResponse(description="Invalid request body or unknown `analysis_type`."),
+            409: OpenApiResponse(description="All transactions already analyzed with this type — no new data since the last successful run."),
         },
     )
     def post(self, request: Request) -> Response:
@@ -59,6 +61,11 @@ class AnalysisRunView(APIView):
             run = AnalysisService.run_analysis(
                 organization_id=org_id,
                 analysis_type=analysis_type,
+            )
+        except AlreadyCurrentError:
+            return Response(
+                {"detail": "All data analyzed — no new transactions since the last run."},
+                status=status.HTTP_409_CONFLICT,
             )
         except ValueError as exc:
             # AnalyzerFactory.create() raised — unknown analysis_type.
