@@ -9,12 +9,15 @@ import Papa from 'papaparse'
 import type { ParseResult } from 'papaparse'
 import {
   ChevronDown,
+  ChevronUp,
+  ChevronsUpDown,
   ChevronRight,
   ChevronLeft,
   Upload,
   Plus,
   CalendarIcon,
   X,
+  Trash2,
 } from 'lucide-react'
 import { format } from 'date-fns'
 
@@ -50,10 +53,14 @@ import {
 
 import {
   getTransactionsApi,
+  getTransactionFilterOptionsApi,
   importTransactionsApi,
+  deleteTransactionApi,
   type Transaction,
   type TransactionImportRow,
 } from '@/api/transactions'
+import { useAuth } from '@/hooks/use-auth'
+import { useColumnResize } from '@/hooks/use-column-resize'
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -66,7 +73,7 @@ function isoDate(date: Date): string {
   return date.toISOString().split('T')[0]
 }
 
-const PAGE_SIZE = 50
+const PAGE_SIZE_OPTIONS = ['25', '50', '100', 'all'] as const
 
 // ─── date picker ─────────────────────────────────────────────────────────────
 
@@ -109,7 +116,15 @@ function DatePicker({ value, onChange, placeholder = 'Pick a date' }: DatePicker
 
 // ─── row detail panel ────────────────────────────────────────────────────────
 
-function TransactionDetail({ tx }: { tx: Transaction }) {
+function TransactionDetail({
+  tx,
+  canDelete,
+  onDelete,
+}: {
+  tx: Transaction
+  canDelete: boolean
+  onDelete: (id: string) => void
+}) {
   return (
     <tr>
       <td colSpan={6} className="bg-muted/30 px-4 py-3">
@@ -145,6 +160,22 @@ function TransactionDetail({ tx }: { tx: Transaction }) {
             </div>
           )}
         </dl>
+        {canDelete && (
+          <div className="mt-3 flex justify-end">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 px-2 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
+              onClick={(e) => {
+                e.stopPropagation()
+                onDelete(tx.id)
+              }}
+            >
+              <Trash2 className="mr-1 size-3" />
+              Delete
+            </Button>
+          </div>
+        )}
       </td>
     </tr>
   )
@@ -689,6 +720,19 @@ function ImportCsvDialog({ open, onOpenChange }: ImportCsvDialogProps) {
   )
 }
 
+// ─── resize handle ────────────────────────────────────────────────────────────
+
+function ResizeHandle({ onMouseDown }: { onMouseDown: (e: React.MouseEvent) => void }) {
+  return (
+    <div
+      className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none group/rh"
+      onMouseDown={(e) => { e.stopPropagation(); onMouseDown(e) }}
+    >
+      <div className="absolute right-0 top-1 h-[calc(100%-8px)] w-px bg-border opacity-0 transition-opacity group-hover/rh:opacity-100" />
+    </div>
+  )
+}
+
 // ─── filter bar ───────────────────────────────────────────────────────────────
 
 interface FilterBarProps {
@@ -696,6 +740,8 @@ interface FilterBarProps {
   category: string
   dateFrom: Date | undefined
   dateTo: Date | undefined
+  vendors: string[]
+  categories: string[]
   onVendorChange: (v: string) => void
   onCategoryChange: (v: string) => void
   onDateFromChange: (d: Date | undefined) => void
@@ -709,6 +755,8 @@ function FilterBar({
   category,
   dateFrom,
   dateTo,
+  vendors,
+  categories,
   onVendorChange,
   onCategoryChange,
   onDateFromChange,
@@ -718,18 +766,28 @@ function FilterBar({
 }: FilterBarProps) {
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <Input
-        className="h-9 w-40 text-sm"
-        placeholder="Vendor"
-        value={vendor}
-        onChange={(e) => onVendorChange(e.target.value)}
-      />
-      <Input
-        className="h-9 w-40 text-sm"
-        placeholder="Category"
-        value={category}
-        onChange={(e) => onCategoryChange(e.target.value)}
-      />
+      <Select value={vendor || '__all__'} onValueChange={(v) => onVendorChange(v === '__all__' ? '' : v)}>
+        <SelectTrigger className="h-9 w-44 text-sm">
+          <SelectValue placeholder="All vendors" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="__all__">All vendors</SelectItem>
+          {vendors.map((v) => (
+            <SelectItem key={v} value={v}>{v}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Select value={category || '__all__'} onValueChange={(v) => onCategoryChange(v === '__all__' ? '' : v)}>
+        <SelectTrigger className="h-9 w-44 text-sm">
+          <SelectValue placeholder="All categories" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="__all__">All categories</SelectItem>
+          {categories.map((c) => (
+            <SelectItem key={c} value={c}>{c}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
       <DatePicker value={dateFrom} onChange={onDateFromChange} placeholder="Date from" />
       <DatePicker value={dateTo} onChange={onDateToChange} placeholder="Date to" />
       {hasFilters && (
@@ -744,29 +802,59 @@ function FilterBar({
 
 // ─── page ─────────────────────────────────────────────────────────────────────
 
+type SortField = 'date' | 'amount'
+type SortDir = 'asc' | 'desc'
+
+function SortIcon({ field, sortField, sortDir }: { field: SortField; sortField: SortField | null; sortDir: SortDir }) {
+  if (sortField !== field) return <ChevronsUpDown className="ml-1 inline size-3.5 text-muted-foreground/50" />
+  return sortDir === 'asc'
+    ? <ChevronUp className="ml-1 inline size-3.5" />
+    : <ChevronDown className="ml-1 inline size-3.5" />
+}
+
 export function TransactionsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [addOpen, setAddOpen] = React.useState(false)
   const [importOpen, setImportOpen] = React.useState(false)
   const [expandedId, setExpandedId] = React.useState<string | null>(null)
+  const queryClient = useQueryClient()
+  const { user } = useAuth()
+  const canDelete = user?.role === 'owner' || user?.role === 'admin'
 
-  // Debounce refs for text filters
-  const vendorDebounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
-  const categoryDebounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  // column widths: Date, Vendor, Category, Amount, Description, chevron
+  const { widths: colW, sumPx, startResize, containerRef } = useColumnResize([90, 160, 130, 110, 220, 32])
 
-  // Local controlled values for text inputs (debounced before writing to URL)
-  const [vendorInput, setVendorInput] = React.useState(searchParams.get('vendor') ?? '')
-  const [categoryInput, setCategoryInput] = React.useState(searchParams.get('category') ?? '')
+  const { mutate: deleteTransaction } = useMutation({
+    mutationFn: (id: string) => deleteTransactionApi(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['transactions'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      setExpandedId(null)
+      toast.success('Transaction deleted')
+    },
+    onError: () => toast.error('Failed to delete transaction'),
+  })
 
-  // Read filter state from URL
+  // Read filter + sort state from URL
   const urlVendor = searchParams.get('vendor') ?? ''
   const urlCategory = searchParams.get('category') ?? ''
   const urlDateFrom = searchParams.get('date_from') ?? ''
   const urlDateTo = searchParams.get('date_to') ?? ''
+  const urlOrdering = searchParams.get('ordering') ?? ''
   const page = parseInt(searchParams.get('page') ?? '1', 10)
+  const pageSizeParam = searchParams.get('page_size') ?? '25'
+  // 'all' is passed as-is to the backend; numeric strings are parsed for local totalPages math.
+  const pageSize = pageSizeParam === 'all' ? null : parseInt(pageSizeParam, 10)
 
   const dateFrom = urlDateFrom ? new Date(urlDateFrom) : undefined
   const dateTo = urlDateTo ? new Date(urlDateTo) : undefined
+
+  // Derive sort field/dir from ordering param
+  const sortField: SortField | null =
+    urlOrdering.replace('-', '') === 'date' ? 'date'
+    : urlOrdering.replace('-', '') === 'amount' ? 'amount'
+    : null
+  const sortDir: SortDir = urlOrdering.startsWith('-') ? 'desc' : 'asc'
 
   const hasFilters = !!(urlVendor || urlCategory || urlDateFrom || urlDateTo)
 
@@ -784,15 +872,11 @@ export function TransactionsPage() {
   }
 
   function handleVendorChange(v: string) {
-    setVendorInput(v)
-    if (vendorDebounceRef.current) clearTimeout(vendorDebounceRef.current)
-    vendorDebounceRef.current = setTimeout(() => updateParam('vendor', v || undefined), 300)
+    updateParam('vendor', v || undefined)
   }
 
   function handleCategoryChange(v: string) {
-    setCategoryInput(v)
-    if (categoryDebounceRef.current) clearTimeout(categoryDebounceRef.current)
-    categoryDebounceRef.current = setTimeout(() => updateParam('category', v || undefined), 300)
+    updateParam('category', v || undefined)
   }
 
   function handleDateFromChange(d: Date | undefined) {
@@ -804,8 +888,6 @@ export function TransactionsPage() {
   }
 
   function handleClearFilters() {
-    setVendorInput('')
-    setCategoryInput('')
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev)
       next.delete('vendor')
@@ -817,15 +899,36 @@ export function TransactionsPage() {
     })
   }
 
+  function handleSort(field: SortField) {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      next.set('page', '1')
+      if (sortField === field) {
+        if (sortDir === 'desc') {
+          // desc → asc
+          next.set('ordering', field)
+        } else {
+          // asc → clear (back to default)
+          next.delete('ordering')
+        }
+      } else {
+        // new field → desc first
+        next.set('ordering', `-${field}`)
+      }
+      return next
+    })
+  }
+
   // Build query params
   const queryParams: Record<string, string> = {
     page: String(page),
-    page_size: String(PAGE_SIZE),
+    page_size: pageSizeParam,  // send 'all' literally when selected
   }
   if (urlVendor) queryParams.vendor = urlVendor
   if (urlCategory) queryParams.category = urlCategory
   if (urlDateFrom) queryParams.date_from = urlDateFrom
   if (urlDateTo) queryParams.date_to = urlDateTo
+  if (urlOrdering) queryParams.ordering = urlOrdering
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['transactions', queryParams],
@@ -833,12 +936,27 @@ export function TransactionsPage() {
     placeholderData: (prev) => prev,
   })
 
-  const totalPages = data ? Math.max(1, Math.ceil(data.count / PAGE_SIZE)) : 1
+  const { data: filterOptions } = useQuery({
+    queryKey: ['transactions', 'filter-options'],
+    queryFn: () => getTransactionFilterOptionsApi().then((r) => r.data),
+    staleTime: 60_000,
+  })
+
+  const totalPages = data && pageSize ? Math.max(1, Math.ceil(data.count / pageSize)) : 1
 
   function setPage(p: number) {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev)
       next.set('page', String(p))
+      return next
+    })
+  }
+
+  function setPageSizeParam(ps: string) {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      next.set('page_size', ps)
+      next.set('page', '1')
       return next
     })
   }
@@ -871,10 +989,12 @@ export function TransactionsPage() {
 
       {/* Filter Bar */}
       <FilterBar
-        vendor={vendorInput}
-        category={categoryInput}
+        vendor={urlVendor}
+        category={urlCategory}
         dateFrom={dateFrom}
         dateTo={dateTo}
+        vendors={filterOptions?.vendors ?? []}
+        categories={filterOptions?.categories ?? []}
         onVendorChange={handleVendorChange}
         onCategoryChange={handleCategoryChange}
         onDateFromChange={handleDateFromChange}
@@ -884,16 +1004,47 @@ export function TransactionsPage() {
       />
 
       {/* Table */}
-      <div className="overflow-x-auto rounded-lg border">
-        <Table>
+      <div ref={containerRef} className="overflow-x-auto rounded-lg border">
+        <Table style={{ tableLayout: 'fixed', width: sumPx }}>
           <TableHeader>
             <TableRow>
-              <TableHead>Date</TableHead>
-              <TableHead>Vendor</TableHead>
-              <TableHead>Category</TableHead>
-              <TableHead className="text-right">Amount</TableHead>
-              <TableHead>Description</TableHead>
-              <TableHead className="w-8" />
+              <TableHead
+                className="relative whitespace-nowrap"
+                style={{ width: colW[0] }}
+              >
+                <button
+                  className="flex cursor-pointer select-none items-center"
+                  onClick={() => handleSort('date')}
+                >
+                  Date <SortIcon field="date" sortField={sortField} sortDir={sortDir} />
+                </button>
+                <ResizeHandle onMouseDown={(e) => startResize(0, e)} />
+              </TableHead>
+              <TableHead className="relative" style={{ width: colW[1] }}>
+                Vendor
+                <ResizeHandle onMouseDown={(e) => startResize(1, e)} />
+              </TableHead>
+              <TableHead className="relative" style={{ width: colW[2] }}>
+                Category
+                <ResizeHandle onMouseDown={(e) => startResize(2, e)} />
+              </TableHead>
+              <TableHead
+                className="relative whitespace-nowrap text-right"
+                style={{ width: colW[3] }}
+              >
+                <button
+                  className="ml-auto flex cursor-pointer select-none items-center"
+                  onClick={() => handleSort('amount')}
+                >
+                  Amount <SortIcon field="amount" sortField={sortField} sortDir={sortDir} />
+                </button>
+                <ResizeHandle onMouseDown={(e) => startResize(3, e)} />
+              </TableHead>
+              <TableHead className="relative" style={{ width: colW[4] }}>
+                Description
+                <ResizeHandle onMouseDown={(e) => startResize(4, e)} />
+              </TableHead>
+              <TableHead style={{ width: colW[5] }} />
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -938,16 +1089,16 @@ export function TransactionsPage() {
                     onClick={() => toggleExpand(tx.id)}
                   >
                     <TableCell className="text-sm">{tx.date}</TableCell>
-                    <TableCell className="max-w-[160px] truncate text-sm font-medium">
+                    <TableCell className="truncate text-sm font-medium">
                       {tx.vendor}
                     </TableCell>
-                    <TableCell className="max-w-[120px] truncate text-sm text-muted-foreground">
+                    <TableCell className="truncate text-sm text-muted-foreground">
                       {tx.category || '—'}
                     </TableCell>
                     <TableCell className="text-right text-sm font-mono">
                       {formatUSD(tx.amount)}
                     </TableCell>
-                    <TableCell className="max-w-[200px] truncate text-sm text-muted-foreground">
+                    <TableCell className="truncate text-sm text-muted-foreground">
                       {tx.description || '—'}
                     </TableCell>
                     <TableCell className="text-center">
@@ -958,7 +1109,13 @@ export function TransactionsPage() {
                       )}
                     </TableCell>
                   </TableRow>
-                  {expandedId === tx.id && <TransactionDetail tx={tx} />}
+                  {expandedId === tx.id && (
+                    <TransactionDetail
+                      tx={tx}
+                      canDelete={canDelete}
+                      onDelete={deleteTransaction}
+                    />
+                  )}
                 </React.Fragment>
               ))
             )}
@@ -969,29 +1126,48 @@ export function TransactionsPage() {
       {/* Pagination */}
       {!isLoading && data && data.count > 0 && (
         <div className="flex items-center justify-between text-sm">
-          <span className="text-muted-foreground">
-            Page {page} of {totalPages}
-          </span>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page <= 1}
-              onClick={() => setPage(page - 1)}
-            >
-              <ChevronLeft className="size-4" />
-              Prev
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page >= totalPages}
-              onClick={() => setPage(page + 1)}
-            >
-              Next
-              <ChevronRight className="size-4" />
-            </Button>
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <span>Rows per page:</span>
+            <Select value={pageSizeParam} onValueChange={setPageSizeParam}>
+              <SelectTrigger className="h-7 w-20 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PAGE_SIZE_OPTIONS.map((o) => (
+                  <SelectItem key={o} value={o}>
+                    {o === 'all' ? 'All' : o}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
+          {pageSizeParam !== 'all' && totalPages > 1 && (
+            <div className="flex items-center gap-3">
+              <span className="text-muted-foreground">
+                Page {page} of {totalPages}
+              </span>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page <= 1}
+                  onClick={() => setPage(page - 1)}
+                >
+                  <ChevronLeft className="size-4" />
+                  Prev
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page >= totalPages}
+                  onClick={() => setPage(page + 1)}
+                >
+                  Next
+                  <ChevronRight className="size-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

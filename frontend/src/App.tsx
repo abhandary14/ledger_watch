@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from '@/store/auth-context'
 import { ProtectedRoute } from '@/components/ProtectedRoute'
+import { OwnerRoute } from '@/components/OwnerRoute'
 import { AppLayout } from '@/components/AppLayout'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { LoginPage } from '@/pages/auth/LoginPage'
@@ -10,6 +11,9 @@ import { TransactionsPage } from '@/pages/app/TransactionsPage'
 import { AnalysisPage } from '@/pages/app/AnalysisPage'
 import { AlertsPage } from '@/pages/app/AlertsPage'
 import { SettingsPage } from '@/pages/app/SettingsPage'
+import { ManageOrgPage } from '@/pages/app/ManageOrgPage'
+import { OrgDirectoryPage } from '@/pages/app/OrgDirectoryPage'
+import { DocsPage } from '@/pages/app/DocsPage'
 
 export function App() {
   return (
@@ -27,6 +31,13 @@ export function App() {
             <Route path="/analysis" element={<ErrorBoundary><AnalysisPage /></ErrorBoundary>} />
             <Route path="/alerts" element={<ErrorBoundary><AlertsPage /></ErrorBoundary>} />
             <Route path="/settings" element={<ErrorBoundary><SettingsPage /></ErrorBoundary>} />
+            <Route path="/org-directory" element={<ErrorBoundary><OrgDirectoryPage /></ErrorBoundary>} />
+            <Route path="/docs" element={<ErrorBoundary><DocsPage /></ErrorBoundary>} />
+
+            {/* Owner-only routes */}
+            <Route element={<OwnerRoute />}>
+              <Route path="/manage-org" element={<ErrorBoundary><ManageOrgPage /></ErrorBoundary>} />
+            </Route>
           </Route>
         </Route>
 

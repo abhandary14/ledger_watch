@@ -51,15 +51,25 @@ class TestRegisterAPI:
         api_client.post(REGISTER_URL, payload, format="json")
         assert Organization.objects.filter(name="Brand New Org").exists()
 
-    def test_register_creates_owner_user(self, api_client):
+    def test_register_owner_email_creates_owner_user(self, api_client):
         payload = {
-            "email": "ownertest@example.com",
+            "email": "owner@example.com",
             "password": "securepass123",
             "organization_name": "Owner Org",
         }
         api_client.post(REGISTER_URL, payload, format="json")
-        user = User.objects.get(email="ownertest@example.com")
+        user = User.objects.get(email="owner@example.com")
         assert user.role == User.Role.OWNER
+
+    def test_register_non_owner_email_creates_employee_user(self, api_client):
+        payload = {
+            "email": "john@example.com",
+            "password": "securepass123",
+            "organization_name": "Employee Org",
+        }
+        api_client.post(REGISTER_URL, payload, format="json")
+        user = User.objects.get(email="john@example.com")
+        assert user.role == User.Role.EMPLOYEE
 
     def test_duplicate_email_returns_400(self, api_client, user):
         payload = {

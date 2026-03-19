@@ -1,9 +1,12 @@
+import * as React from 'react'
 import { useState } from 'react'
+import { useColumnResize } from '@/hooks/use-column-resize'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ArrowUp, ArrowDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -22,7 +25,8 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
-import { getAlertsApi, acknowledgeAlertApi, resolveAlertApi, type Alert } from '@/api/alerts'
+import { getAlertsApi, acknowledgeAlertApi, resolveAlertApi, reopenAlertApi, deleteAlertApi, type Alert } from '@/api/alerts'
+import { useAuth } from '@/hooks/use-auth'
 
 // ─── constants ───────────────────────────────────────────────────────────────
 
@@ -105,19 +109,51 @@ function AlertMessage({ message }: { message: string }) {
   )
 }
 
+// ─── resize handle ────────────────────────────────────────────────────────────
+
+function ResizeHandle({ onMouseDown }: { onMouseDown: (e: React.MouseEvent) => void }) {
+  return (
+    <div
+      className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none group/rh"
+      onMouseDown={onMouseDown}
+    >
+      <div className="absolute right-0 top-1 h-[calc(100%-8px)] w-px bg-border opacity-0 transition-opacity group-hover/rh:opacity-100" />
+    </div>
+  )
+}
+
 // ─── page ─────────────────────────────────────────────────────────────────────
 
 export function AlertsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const queryClient = useQueryClient()
+  const { user } = useAuth()
+  const canReopen = user?.role === 'owner' || user?.role === 'admin'
+  const canDelete = user?.role === 'owner' || user?.role === 'admin'
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [alertToDelete, setAlertToDelete] = useState<string | null>(null)
+
+  // column widths: checkbox, Severity, Type, Message, Created, Status, Actions
+  const { widths: colW, sumPx, startResize, containerRef } = useColumnResize([40, 90, 140, 300, 90, 110, 200])
 
   const filterStatus = searchParams.get('status') ?? ''
   const filterSeverity = searchParams.get('severity') ?? ''
   const filterType = searchParams.get('alert_type') ?? ''
-  const page = parseInt(searchParams.get('page') ?? '1', 10)
+  const sortDir = (searchParams.get('sort') ?? 'desc') as 'asc' | 'desc'
+  const page = Math.max(parseInt(searchParams.get('page') ?? '1', 10) || 1, 1)
+  const pageSizeParam = searchParams.get('page_size') ?? '25'
+  const pageSize = Math.min(Math.max(parseInt(pageSizeParam, 10) || 25, 1), 1000)
 
   const hasFilters = !!(filterStatus || filterSeverity || filterType)
+
+  function toggleSort() {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      next.set('sort', sortDir === 'desc' ? 'asc' : 'desc')
+      next.delete('page')
+      return next
+    })
+  }
 
   function setFilter(key: string, value: string) {
     setSearchParams((prev) => {
@@ -137,20 +173,40 @@ export function AlertsPage() {
     })
   }
 
+  function setPageSizeParam(ps: string) {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      next.set('page_size', ps)
+      next.delete('page')
+      return next
+    })
+  }
+
   const {
     data: alertsData,
     isLoading,
     isError,
   } = useQuery({
-    queryKey: ['alerts', filterStatus, filterSeverity, filterType, page],
+    queryKey: ['alerts', filterStatus, filterSeverity, filterType, sortDir, page, pageSize],
     queryFn: () =>
       getAlertsApi({
         status: filterStatus || undefined,
         severity: filterSeverity || undefined,
         alert_type: filterType || undefined,
+        ordering: sortDir === 'asc' ? 'created_at' : '-created_at',
         page,
+        page_size: pageSize,
       }).then((r) => r.data),
   })
+
+  function handleApiError(err: unknown, fallbackMessage: string) {
+    const status = (err as { response?: { status?: number } })?.response?.status
+    if (status === 403) {
+      toast.error('This action can only be performed by an admin or owner. Contact your admin.')
+    } else {
+      toast.error(fallbackMessage)
+    }
+  }
 
   const { mutate: acknowledge, isPending: acknowledging } = useMutation({
     mutationFn: (id: string) => acknowledgeAlertApi(id),
@@ -160,7 +216,7 @@ export function AlertsPage() {
       setSelected((s) => { const n = new Set(s); n.delete(id); return n })
       toast.success('Alert acknowledged')
     },
-    onError: () => toast.error('Failed to acknowledge alert'),
+    onError: (err: unknown) => handleApiError(err, 'Failed to acknowledge alert'),
   })
 
   const { mutate: resolve, isPending: resolving } = useMutation({
@@ -170,7 +226,27 @@ export function AlertsPage() {
       queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       toast.success('Alert resolved')
     },
-    onError: () => toast.error('Failed to resolve alert'),
+    onError: (err: unknown) => handleApiError(err, 'Failed to resolve alert'),
+  })
+
+  const { mutate: reopen, isPending: reopening } = useMutation({
+    mutationFn: (id: string) => reopenAlertApi(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['alerts'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      toast.success('Alert reopened')
+    },
+    onError: (err: unknown) => handleApiError(err, 'Failed to reopen alert'),
+  })
+
+  const { mutate: deleteAlert, isPending: deleting } = useMutation({
+    mutationFn: (id: string) => deleteAlertApi(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['alerts'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      toast.success('Alert deleted')
+    },
+    onError: (err: unknown) => handleApiError(err, 'Failed to delete alert'),
   })
 
   async function acknowledgeAll() {
@@ -188,7 +264,7 @@ export function AlertsPage() {
   }
 
   const alerts = alertsData?.results ?? []
-  const totalPages = alertsData ? Math.ceil(alertsData.count / 20) : 1
+  const totalPages = alertsData ? Math.max(1, Math.ceil(alertsData.count / pageSize)) : 1
   const openAlerts = alerts.filter((a) => a.status === 'OPEN')
 
   function toggleSelect(id: string) {
@@ -209,10 +285,10 @@ export function AlertsPage() {
   }
 
   return (
+    <>
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">Alerts</h1>
-        <p className="text-sm text-muted-foreground">Review and manage detected issues</p>
       </div>
 
       {/* Filter bar */}
@@ -289,7 +365,7 @@ export function AlertsPage() {
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto rounded-md border">
+      <div ref={containerRef} className="overflow-x-auto rounded-md border">
         {isLoading ? (
           <div className="space-y-px p-4">
             {Array.from({ length: 6 }).map((_, i) => (
@@ -319,22 +395,48 @@ export function AlertsPage() {
             )}
           </div>
         ) : (
-          <Table>
+          <Table style={{ tableLayout: 'fixed', width: sumPx }}>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-10">
+                <TableHead className="relative" style={{ width: colW[0] }}>
                   <Checkbox
                     checked={openAlerts.length > 0 && selected.size === openAlerts.length}
                     onCheckedChange={toggleAll}
                     aria-label="Select all open"
                   />
                 </TableHead>
-                <TableHead>Severity</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Message</TableHead>
-                <TableHead>Created</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Actions</TableHead>
+                <TableHead className="relative" style={{ width: colW[1] }}>
+                  Severity
+                  <ResizeHandle onMouseDown={(e) => startResize(1, e)} />
+                </TableHead>
+                <TableHead className="relative" style={{ width: colW[2] }}>
+                  Type
+                  <ResizeHandle onMouseDown={(e) => startResize(2, e)} />
+                </TableHead>
+                <TableHead className="relative" style={{ width: colW[3] }}>
+                  Message
+                  <ResizeHandle onMouseDown={(e) => startResize(3, e)} />
+                </TableHead>
+                <TableHead className="relative" style={{ width: colW[4] }}>
+                  <button
+                    className="flex items-center gap-1 font-medium hover:text-foreground"
+                    onClick={toggleSort}
+                  >
+                    Created
+                    {sortDir === 'desc'
+                      ? <ArrowDown className="size-3.5" />
+                      : <ArrowUp className="size-3.5" />}
+                  </button>
+                  <ResizeHandle onMouseDown={(e) => startResize(4, e)} />
+                </TableHead>
+                <TableHead className="relative" style={{ width: colW[5] }}>
+                  Status
+                  <ResizeHandle onMouseDown={(e) => startResize(5, e)} />
+                </TableHead>
+                <TableHead className="relative" style={{ width: colW[6] }}>
+                  Actions
+                  <ResizeHandle onMouseDown={(e) => startResize(6, e)} />
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -356,7 +458,7 @@ export function AlertsPage() {
                     <SeverityBadge severity={alert.severity} />
                   </TableCell>
                   <TableCell className="text-sm">{alert.alert_type}</TableCell>
-                  <TableCell className="max-w-xs">
+                  <TableCell className="overflow-hidden">
                     <AlertMessage message={alert.message} />
                   </TableCell>
                   <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
@@ -400,6 +502,28 @@ export function AlertsPage() {
                           Resolve
                         </Button>
                       )}
+                      {alert.status === 'RESOLVED' && canReopen && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 px-2 text-xs"
+                          disabled={reopening}
+                          onClick={() => reopen(alert.id)}
+                        >
+                          Reopen
+                        </Button>
+                      )}
+                      {canDelete && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 px-2 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
+                          disabled={deleting}
+                          onClick={() => setAlertToDelete(alert.id)}
+                        >
+                          Delete
+                        </Button>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>
@@ -410,31 +534,68 @@ export function AlertsPage() {
       </div>
 
       {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-end gap-2 text-sm">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={page <= 1}
-            onClick={() => setPage(page - 1)}
-          >
-            <ChevronLeft className="size-4" />
-            Previous
-          </Button>
-          <span className="text-muted-foreground">
-            Page {page} of {totalPages}
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={page >= totalPages}
-            onClick={() => setPage(page + 1)}
-          >
-            Next
-            <ChevronRight className="size-4" />
-          </Button>
+      {!isLoading && (alerts.length > 0 || alertsData) && (
+        <div className="flex items-center justify-between text-sm">
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <span>Rows per page:</span>
+            <Select value={pageSizeParam} onValueChange={setPageSizeParam}>
+              <SelectTrigger className="h-7 w-20 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="25">25</SelectItem>
+                <SelectItem value="50">50</SelectItem>
+                <SelectItem value="100">100</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {totalPages > 1 && (
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page <= 1}
+                onClick={() => setPage(page - 1)}
+              >
+                <ChevronLeft className="size-4" />
+                Previous
+              </Button>
+              <span className="text-muted-foreground">
+                Page {page} of {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page >= totalPages}
+                onClick={() => setPage(page + 1)}
+              >
+                Next
+                <ChevronRight className="size-4" />
+              </Button>
+            </div>
+          )}
         </div>
       )}
     </div>
+
+    <Dialog open={alertToDelete !== null} onOpenChange={(open) => { if (!open) setAlertToDelete(null) }}>
+      <DialogContent showCloseButton={false}>
+        <DialogHeader>
+          <DialogTitle>Delete alert?</DialogTitle>
+          <DialogDescription>This action cannot be undone.</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setAlertToDelete(null)}>Cancel</Button>
+          <Button
+            variant="destructive"
+            disabled={deleting}
+            onClick={() => { if (alertToDelete) { deleteAlert(alertToDelete); setAlertToDelete(null) } }}
+          >
+            Delete
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   )
 }

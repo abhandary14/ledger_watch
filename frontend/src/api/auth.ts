@@ -21,6 +21,7 @@ export interface MeResponse {
   email: string
   first_name: string
   last_name: string
+  role: 'owner' | 'admin' | 'employee'
   organization: {
     id: string
     name: string

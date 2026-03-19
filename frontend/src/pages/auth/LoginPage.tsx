@@ -28,6 +28,7 @@ export function LoginPage() {
   const { login } = useAuth()
   const navigate = useNavigate()
   const [isLoading, setIsLoading] = useState(false)
+  const [rememberMe, setRememberMe] = useState(false)
 
   const form = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
@@ -37,7 +38,7 @@ export function LoginPage() {
   const onSubmit = async (data: LoginFormData) => {
     setIsLoading(true)
     try {
-      await login(data.email, data.password)
+      await login(data.email, data.password, rememberMe)
       navigate('/dashboard')
     } catch {
       toast.error('Invalid credentials. Please check your email and password.')
@@ -100,6 +101,19 @@ export function LoginPage() {
                   </FormItem>
                 )}
               />
+
+              <div className="flex items-center gap-2">
+                <input
+                  id="remember-me"
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  className="size-4 rounded border-gray-300 accent-primary"
+                />
+                <label htmlFor="remember-me" className="text-sm text-muted-foreground select-none">
+                  Keep me signed in for 7 days
+                </label>
+              </div>
 
               <Button type="submit" className="w-full" disabled={isLoading}>
                 {isLoading ? 'Signing in…' : 'Sign in'}

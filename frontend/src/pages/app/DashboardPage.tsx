@@ -1,8 +1,9 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  LineChart,
+  AreaChart,
+  Area,
   Line,
   XAxis,
   YAxis,
@@ -14,16 +15,19 @@ import {
   Cell,
 } from 'recharts'
 import { toast } from 'sonner'
-import { AlertTriangle, BarChart2, DollarSign, Receipt, Upload, Play } from 'lucide-react'
+import { AlertTriangle, BarChart2, DollarSign, Receipt } from 'lucide-react'
+import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { cn } from '@/lib/utils'
 import {
   getTransactionsApi,
   getOpenAlertsApi,
   getLatestAnalysisApi,
   acknowledgeAlertApi,
   type Alert,
+  type Transaction,
 } from '@/api/dashboard'
 
 // ─── helpers ────────────────────────────────────────────────────────────────
@@ -46,12 +50,12 @@ function relativeTime(iso: string): string {
   return `${Math.floor(hours / 24)}d ago`
 }
 
-function shortMonth(yearMonth: string): string {
-  const [y, m] = yearMonth.split('-')
-  return new Date(Number(y), Number(m) - 1).toLocaleString('en-US', {
-    month: 'short',
-    year: '2-digit',
-  })
+function formatDateAxis(dateStr: string, range: ChartRange): string {
+  const d = new Date(dateStr + 'T12:00:00') // noon avoids UTC-midnight timezone shift
+  if (range === '5Y') {
+    return d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' })
+  }
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
 // ─── severity ───────────────────────────────────────────────────────────────
@@ -110,18 +114,44 @@ function StatCard({ icon: Icon, label, value, isLoading, isError }: StatCardProp
 
 // ─── page ────────────────────────────────────────────────────────────────────
 
+type ChartRange = '1M' | '6M' | 'YTD' | '1Y' | '5Y' | 'CUSTOM'
+const CHART_RANGES: ChartRange[] = ['1M', '6M', 'YTD', '1Y', '5Y', 'CUSTOM']
+
 export function DashboardPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
 
-  const { thirtyDaysAgo, sixMonthsAgo } = useMemo(() => {
+  const [chartRange, setChartRange] = useState<ChartRange>('6M')
+  const [customFrom, setCustomFrom] = useState('')
+  const [customTo, setCustomTo] = useState('')
+  const [showCumulative, setShowCumulative] = useState(false)
+
+  const { thirtyDaysAgo } = useMemo(() => {
     const now = new Date()
     const thirtyDaysAgo = new Date(now)
     thirtyDaysAgo.setDate(now.getDate() - 30)
-    const sixMonthsAgo = new Date(now)
-    sixMonthsAgo.setMonth(now.getMonth() - 6)
-    return { thirtyDaysAgo, sixMonthsAgo }
+    return { thirtyDaysAgo }
   }, [])
+
+  const { chartDateFrom, chartDateTo } = useMemo(() => {
+    const now = new Date()
+    if (chartRange === 'CUSTOM') {
+      return { chartDateFrom: customFrom, chartDateTo: customTo || isoDate(now) }
+    }
+    let from: Date
+    if (chartRange === '1M') {
+      from = new Date(now); from.setMonth(now.getMonth() - 1)
+    } else if (chartRange === '6M') {
+      from = new Date(now); from.setMonth(now.getMonth() - 6)
+    } else if (chartRange === 'YTD') {
+      from = new Date(now.getFullYear(), 0, 1)
+    } else if (chartRange === '1Y') {
+      from = new Date(now); from.setFullYear(now.getFullYear() - 1)
+    } else {
+      from = new Date(now); from.setFullYear(now.getFullYear() - 5)
+    }
+    return { chartDateFrom: isoDate(from), chartDateTo: isoDate(now) }
+  }, [chartRange, customFrom, customTo])
 
   // ── queries ──────────────────────────────────────────────────────────────
 
@@ -134,13 +164,34 @@ export function DashboardPage() {
       }).then((r) => r.data),
   })
 
-  const { data: txn6m, isLoading: loadingTxn6m, isError: errorTxn6m } = useQuery({
-    queryKey: ['dashboard', 'transactions6m'],
-    queryFn: () =>
-      getTransactionsApi({
-        date_from: isoDate(sixMonthsAgo),
-        page_size: '500',
-      }).then((r) => r.data),
+  const { data: txnChart, isLoading: loadingChart, isError: errorChart } = useQuery({
+    queryKey: ['dashboard', 'transactionsChart', chartDateFrom, chartDateTo],
+    queryFn: async () => {
+      const PAGE_SIZE = '200'
+      const MAX_PAGES = 20  // hard cap — prevents runaway loops
+      const allResults: Transaction[] = []
+      let page = 1
+      let totalCount = 0
+
+      for (let i = 0; i < MAX_PAGES; i++) {
+        const res = await getTransactionsApi({
+          date_from: chartDateFrom,
+          date_to: chartDateTo,
+          page_size: PAGE_SIZE,
+          page: String(page),
+        })
+        const data = res.data
+        totalCount = data.count
+        allResults.push(...data.results)
+
+        // Stop when the backend signals no further pages or we have every row
+        if (!data.next || allResults.length >= totalCount) break
+        page++
+      }
+
+      return { count: totalCount, next: null, previous: null, results: allResults }
+    },
+    enabled: chartRange !== 'CUSTOM' || !!(customFrom && customTo),
   })
 
   const { data: openAlertsData, isLoading: loadingAlerts, isError: errorAlerts } = useQuery({
@@ -177,17 +228,18 @@ export function DashboardPage() {
   const latestRun = analysisData?.results[0]
 
   const spendChartData = useMemo(() => {
-    if (!txn6m?.results.length) return []
+    if (!txnChart?.results.length) return []
     const map = new Map<string, number>()
-    for (const t of txn6m.results) {
-      const d = new Date(t.date)
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-      map.set(key, (map.get(key) ?? 0) + parseFloat(t.amount))
+    for (const t of txnChart.results) {
+      map.set(t.date, (map.get(t.date) ?? 0) + parseFloat(t.amount))
     }
-    return Array.from(map.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([month, total]) => ({ month: shortMonth(month), total }))
-  }, [txn6m])
+    const sorted = Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b))
+    let cum = 0
+    return sorted.map(([date, total]) => {
+      cum += total
+      return { date, total, cumulative: cum }
+    })
+  }, [txnChart])
 
   const donutData = useMemo(() => {
     if (!openAlertsData?.results.length) return []
@@ -210,17 +262,6 @@ export function DashboardPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Dashboard</h1>
-          <p className="text-sm text-muted-foreground">Financial health at a glance</p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => toast.info('Coming soon')}>
-            <Upload className="size-4" />
-            Import Transactions
-          </Button>
-          <Button size="sm" onClick={() => toast.info('Coming soon')}>
-            <Play className="size-4" />
-            Run Analysis
-          </Button>
         </div>
       </div>
 
@@ -264,45 +305,155 @@ export function DashboardPage() {
       <div className="grid grid-cols-3 gap-4">
         {/* Spend Over Time (2/3 width) */}
         <Card className="col-span-2">
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Spend Over Time</CardTitle>
+            <div className="flex items-center gap-1">
+              {CHART_RANGES.map((r) => (
+                <button
+                  key={r}
+                  className={cn(
+                    'rounded px-2 py-0.5 text-xs font-medium transition-colors',
+                    chartRange === r
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-muted-foreground hover:bg-muted',
+                  )}
+                  onClick={() => setChartRange(r)}
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
           </CardHeader>
           <CardContent>
-            {loadingTxn6m ? (
-              <Skeleton className="h-48 w-full" />
-            ) : errorTxn6m ? (
-              <div className="flex h-48 items-center justify-center text-sm text-destructive">
+            {/* controls row */}
+            <div className="mb-3 flex flex-wrap items-center gap-4">
+              {chartRange === 'CUSTOM' && (
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="date"
+                    className="h-7 w-36 text-xs"
+                    value={customFrom}
+                    onChange={(e) => setCustomFrom(e.target.value)}
+                  />
+                  <span className="text-xs text-muted-foreground">to</span>
+                  <Input
+                    type="date"
+                    className="h-7 w-36 text-xs"
+                    value={customTo}
+                    onChange={(e) => setCustomTo(e.target.value)}
+                  />
+                </div>
+              )}
+              <label className="flex cursor-pointer items-center gap-1.5 select-none">
+                <input
+                  type="checkbox"
+                  checked={showCumulative}
+                  onChange={(e) => setShowCumulative(e.target.checked)}
+                  className="size-3.5 accent-amber-500"
+                />
+                <span className="inline-block size-2 rounded-full bg-amber-400" />
+                <span className="text-xs text-muted-foreground">Total spend</span>
+              </label>
+            </div>
+
+            {loadingChart ? (
+              <Skeleton className="h-52 w-full" />
+            ) : errorChart ? (
+              <div className="flex h-52 items-center justify-center text-sm text-destructive">
                 Failed to load transaction data
               </div>
+            ) : chartRange === 'CUSTOM' && !(customFrom && customTo) ? (
+              <div className="flex h-52 items-center justify-center text-sm text-muted-foreground">
+                Select a start and end date
+              </div>
             ) : spendChartData.length === 0 ? (
-              <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
-                No transaction data for the last 6 months
+              <div className="flex h-52 items-center justify-center text-sm text-muted-foreground">
+                No transaction data for this period
               </div>
             ) : (
-              <ResponsiveContainer width="100%" height={200}>
-                <LineChart data={spendChartData} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                  <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+              <ResponsiveContainer width="100%" height={210}>
+                <AreaChart
+                  data={spendChartData}
+                  margin={{ top: 8, right: showCumulative ? 64 : 8, left: 0, bottom: 0 }}
+                >
+                  <defs>
+                    <linearGradient id="spendGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#6366f1" stopOpacity={0.18} />
+                      <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                  <XAxis
+                    dataKey="date"
+                    tick={{ fontSize: 11 }}
+                    tickLine={false}
+                    axisLine={false}
+                    tickFormatter={(v) => formatDateAxis(v, chartRange)}
+                    interval={Math.max(0, Math.floor(spendChartData.length / 6) - 1)}
+                  />
                   <YAxis
-                    tick={{ fontSize: 12 }}
+                    yAxisId="left"
+                    tick={{ fontSize: 11 }}
+                    tickLine={false}
+                    axisLine={false}
                     tickFormatter={(v: number) =>
                       v >= 1000 ? `$${(v / 1000).toFixed(0)}k` : `$${v}`
                     }
-                    width={56}
+                    width={52}
                   />
+                  {showCumulative && (
+                    <YAxis
+                      yAxisId="right"
+                      orientation="right"
+                      tick={{ fontSize: 11 }}
+                      tickLine={false}
+                      axisLine={false}
+                      tickFormatter={(v: number) =>
+                        v >= 1000 ? `$${(v / 1000).toFixed(0)}k` : `$${v}`
+                      }
+                      width={60}
+                    />
+                  )}
                   <Tooltip
-                    formatter={(value) => [formatUSD(Number(value)), 'Spend']}
-                    contentStyle={{ fontSize: 12 }}
+                    formatter={(value, name) => [
+                      formatUSD(Number(value)),
+                      name === 'total' ? 'Daily spend' : 'Total spend',
+                    ]}
+                    labelFormatter={(label) =>
+                      new Date(label + 'T12:00:00').toLocaleDateString('en-US', {
+                        month: 'long', day: 'numeric', year: 'numeric',
+                      })
+                    }
+                    contentStyle={{
+                      fontSize: 12,
+                      border: '1px solid #e5e7eb',
+                      borderRadius: '6px',
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+                    }}
+                    cursor={{ stroke: '#6366f1', strokeWidth: 1, strokeDasharray: '4 4' }}
                   />
-                  <Line
+                  <Area
+                    yAxisId="left"
                     type="monotone"
                     dataKey="total"
-                    stroke="hsl(var(--primary))"
+                    stroke="#6366f1"
                     strokeWidth={2}
+                    fill="url(#spendGrad)"
                     dot={false}
-                    activeDot={{ r: 4 }}
+                    activeDot={{ r: 4, fill: '#6366f1', strokeWidth: 0 }}
                   />
-                </LineChart>
+                  {showCumulative && (
+                    <Line
+                      yAxisId="right"
+                      type="monotone"
+                      dataKey="cumulative"
+                      stroke="#f59e0b"
+                      strokeWidth={1.5}
+                      dot={false}
+                      activeDot={{ r: 3, fill: '#f59e0b', strokeWidth: 0 }}
+                    />
+                  )}
+                </AreaChart>
               </ResponsiveContainer>
             )}
           </CardContent>
@@ -347,7 +498,7 @@ export function DashboardPage() {
                           />
                         ))}
                       </Pie>
-                      <Tooltip contentStyle={{ fontSize: 12 }} />
+                      <Tooltip contentStyle={{ fontSize: 12 }} wrapperStyle={{ zIndex: 10 }} />
                     </PieChart>
                   </ResponsiveContainer>
                   {/* Center count label */}

@@ -20,7 +20,9 @@ export function getAlertsApi(params: {
   alert_type?: string
   severity?: string
   status?: string
+  ordering?: string
   page?: number
+  page_size?: number | string
 }) {
   return apiClient.get<PaginatedResponse<Alert>>('/api/v1/alerts/', { params })
 }
@@ -31,4 +33,12 @@ export function acknowledgeAlertApi(id: string) {
 
 export function resolveAlertApi(id: string) {
   return apiClient.post<Alert>(`/api/v1/alerts/${id}/resolve`)
+}
+
+export function reopenAlertApi(id: string) {
+  return apiClient.post<Alert>(`/api/v1/alerts/${id}/reopen`)
+}
+
+export function deleteAlertApi(id: string) {
+  return apiClient.delete<void>(`/api/v1/alerts/${id}/delete`)
 }

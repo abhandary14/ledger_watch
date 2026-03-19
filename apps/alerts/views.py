@@ -4,6 +4,7 @@ Views for the alerts app (Phase 6).
 AlertListView        GET  /api/v1/alerts/                  — list all alerts
 AlertAcknowledgeView POST /api/v1/alerts/<uuid>/acknowledge — mark ACKNOWLEDGED
 AlertResolveView     POST /api/v1/alerts/<uuid>/resolve     — mark RESOLVED
+AlertReopenView      POST /api/v1/alerts/<uuid>/reopen      — reopen RESOLVED → OPEN
 """
 
 from __future__ import annotations
@@ -72,7 +73,10 @@ class AlertListView(ListAPIView):
         if alert_status:
             qs = qs.filter(status=alert_status.upper())
 
-        return qs
+        ordering = self.request.query_params.get("ordering", "-created_at")
+        if ordering not in ("created_at", "-created_at"):
+            ordering = "-created_at"
+        return qs.order_by(ordering)
 
 
 class AlertAcknowledgeView(APIView):
@@ -183,3 +187,96 @@ class AlertResolveView(APIView):
             )
 
         return Response(AlertSerializer(alert).data, status=status.HTTP_200_OK)
+
+
+class AlertReopenView(APIView):
+    """
+    POST /api/v1/alerts/<uuid>/reopen
+
+    Transition a RESOLVED alert back to OPEN.
+
+    Only RESOLVED alerts may be reopened.  Attempting to reopen a non-resolved
+    alert returns HTTP 409 Conflict.
+    Requires admin or owner role.
+    """
+
+    permission_classes = [IsAdminOrOwner]
+
+    @extend_schema(
+        tags=["Alerts"],
+        summary="Reopen a resolved alert",
+        description=(
+            "Transitions the alert from **RESOLVED → OPEN**. "
+            "Returns HTTP 409 if the alert is not currently RESOLVED. "
+            "Writes an audit log entry on success."
+        ),
+        request=None,
+        responses={
+            200: AlertSerializer,
+            404: OpenApiResponse(description="Alert not found."),
+            409: OpenApiResponse(description="Alert is not RESOLVED and cannot be reopened."),
+        },
+    )
+    def post(self, request: Request, pk) -> Response:
+        with transaction.atomic():
+            alert = get_object_or_404(
+                Alert.objects.filter(organization_id=request.user.organization_id).select_for_update(),
+                pk=pk,
+            )
+
+            if alert.status != Alert.Status.RESOLVED:
+                return Response(
+                    {
+                        "detail": (
+                            f"Alert is {alert.status} and cannot be reopened. "
+                            "Only RESOLVED alerts can be reopened."
+                        )
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
+
+            alert.status = Alert.Status.OPEN
+            alert.save(update_fields=["status"])
+
+            AuditLog.objects.create(
+                organization_id=alert.organization_id,
+                event_type="ALERT_REOPENED",
+                metadata={"alert_id": str(alert.id), "alert_type": alert.alert_type},
+            )
+
+        return Response(AlertSerializer(alert).data, status=status.HTTP_200_OK)
+
+
+class AlertDeleteView(APIView):
+    """
+    DELETE /api/v1/alerts/<uuid>/
+
+    Permanently delete an alert. Requires admin or owner role.
+    """
+
+    permission_classes = [IsAdminOrOwner]
+
+    @extend_schema(
+        tags=["Alerts"],
+        summary="Delete an alert",
+        responses={
+            204: OpenApiResponse(description="Alert deleted."),
+            404: OpenApiResponse(description="Alert not found."),
+        },
+    )
+    def delete(self, request, pk):
+        with transaction.atomic():
+            alert = get_object_or_404(
+                Alert.objects.filter(organization_id=request.user.organization_id).select_for_update(),
+                pk=pk,
+            )
+
+            AuditLog.objects.create(
+                organization_id=alert.organization_id,
+                event_type="ALERT_DELETED",
+                metadata={"alert_id": str(alert.id), "alert_type": alert.alert_type},
+            )
+
+            alert.delete()
+
+        return Response(status=status.HTTP_204_NO_CONTENT)

@@ -33,6 +33,7 @@ import {
   getAnalysisResultApi,
   type AnalysisRun,
 } from '@/api/analysis'
+import { useAuth } from '@/hooks/use-auth'
 
 // ─── constants ───────────────────────────────────────────────────────────────
 
@@ -389,6 +390,9 @@ export function AnalysisPage() {
     enabled: drawerRunId != null,
   })
 
+  const { user } = useAuth()
+  const canRunAnalysis = user?.role === 'owner' || user?.role === 'admin'
+
   const selectedMeta = ANALYZER_TYPES.find((t) => t.value === selectedType)
   const totalPages = resultsData ? Math.ceil(resultsData.count / 20) : 1
 
@@ -396,55 +400,67 @@ export function AnalysisPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">Analysis</h1>
-        <p className="text-sm text-muted-foreground">Run analyzers and review results</p>
       </div>
 
       <div className="grid grid-cols-3 gap-6">
         {/* Left panel — Run Analysis */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-medium">Run Analysis</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <Select value={selectedType} onValueChange={setSelectedType}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select analyzer type…" />
-              </SelectTrigger>
-              <SelectContent>
-                {ANALYZER_TYPES.map((t) => (
-                  <SelectItem key={t.value} value={t.value}>
-                    {t.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+        {canRunAnalysis ? (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm font-medium">Run Analysis</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Select value={selectedType} onValueChange={setSelectedType}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select analyzer type…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {ANALYZER_TYPES.map((t) => (
+                    <SelectItem key={t.value} value={t.value}>
+                      {t.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
 
-            {selectedMeta && (
-              <p className="text-xs text-muted-foreground">{selectedMeta.description}</p>
-            )}
+              {selectedMeta && (
+                <p className="text-xs text-muted-foreground">{selectedMeta.description}</p>
+              )}
 
-            <Button
-              className="w-full"
-              disabled={!selectedType || isRunning}
-              onClick={() => {
-                setLastResult(null)
-                setRunError(null)
-                runAnalysis()
-              }}
-            >
-              {isRunning && <Loader2 className="mr-2 size-4 animate-spin" />}
-              Run Analysis
-            </Button>
+              <Button
+                className="w-full"
+                disabled={!selectedType || isRunning}
+                onClick={() => {
+                  setLastResult(null)
+                  setRunError(null)
+                  runAnalysis()
+                }}
+              >
+                {isRunning && <Loader2 className="mr-2 size-4 animate-spin" />}
+                Run Analysis
+              </Button>
 
-            {runError && (
-              <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                {runError}
+              {runError && (
+                <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                  {runError}
+                </p>
+              )}
+
+              {lastResult && <InlineResult run={lastResult} />}
+            </CardContent>
+          </Card>
+        ) : (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm font-medium">Run Analysis</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">
+                Only admins and owners can run analysis.
               </p>
-            )}
-
-            {lastResult && <InlineResult run={lastResult} />}
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Right panel — Results History */}
         <div className="col-span-2 space-y-4">
@@ -495,37 +511,37 @@ export function AnalysisPage() {
                 </p>
               ) : (
                 <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Run Time</TableHead>
-                      <TableHead>Key Metric</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {resultsData.results.map((run) => (
-                      <TableRow
-                        key={run.id}
-                        className="cursor-pointer hover:bg-muted/50"
-                        onClick={() => setDrawerRunId(run.id)}
-                      >
-                        <TableCell className="font-medium">
-                          {ANALYZER_TYPES.find((t) => t.value === run.analysis_type)?.label ??
-                            run.analysis_type}
-                        </TableCell>
-                        <TableCell>
-                          <StatusBadge status={run.status} />
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {run.run_time ? relativeTime(run.run_time) : relativeTime(run.created_at)}
-                        </TableCell>
-                        <TableCell className="text-sm">{getKeyMetric(run)}</TableCell>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Run Time</TableHead>
+                        <TableHead>Key Metric</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {resultsData.results.map((run) => (
+                        <TableRow
+                          key={run.id}
+                          className="cursor-pointer hover:bg-muted/50"
+                          onClick={() => setDrawerRunId(run.id)}
+                        >
+                          <TableCell className="font-medium">
+                            {ANALYZER_TYPES.find((t) => t.value === run.analysis_type)?.label ??
+                              run.analysis_type}
+                          </TableCell>
+                          <TableCell>
+                            <StatusBadge status={run.status} />
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {run.run_time ? relativeTime(run.run_time) : relativeTime(run.created_at)}
+                          </TableCell>
+                          <TableCell className="text-sm">{getKeyMetric(run)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
                 </div>
               )}
             </CardContent>

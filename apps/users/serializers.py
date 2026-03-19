@@ -37,3 +37,29 @@ class UserMeSerializer(serializers.ModelSerializer):
 
 class LogoutSerializer(serializers.Serializer):
     refresh = serializers.CharField()
+
+
+class OrgMemberSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ["id", "email", "first_name", "last_name", "role", "created_at"]
+        read_only_fields = fields
+
+
+class CreateMemberSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    password = serializers.CharField(min_length=8, write_only=True)
+    role = serializers.ChoiceField(choices=["admin", "employee"])
+    first_name = serializers.CharField(max_length=100, required=False, default="", allow_blank=True)
+    last_name = serializers.CharField(max_length=100, required=False, default="", allow_blank=True)
+
+    def validate_password(self, value):
+        try:
+            validate_password(value)
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(list(exc.messages))
+        return value
+
+
+class UpdateMemberRoleSerializer(serializers.Serializer):
+    role = serializers.ChoiceField(choices=["admin", "employee"])

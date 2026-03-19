@@ -39,6 +39,15 @@ class RegisterView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        if Organization.objects.filter(name=org_name).exists():
+            return Response(
+                {"organization_name": ["An organization with this name already exists."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        local_part = email.split("@")[0].lower()
+        role = User.Role.OWNER if local_part == "owner" else User.Role.EMPLOYEE
+
         try:
             with db_transaction.atomic():
                 org = Organization.objects.create(name=org_name)
@@ -46,7 +55,7 @@ class RegisterView(APIView):
                     email=email,
                     password=password,
                     organization=org,
-                    role=User.Role.OWNER,
+                    role=role,
                 )
                 AuditLog.objects.create(
                     organization=org,
@@ -89,12 +98,14 @@ class LoginView(APIView):
         email = User.objects.normalize_email(serializer.validated_data["email"])
         password = serializer.validated_data["password"]
 
+        _auth_failed = Response(
+            {"detail": "Unable to authenticate with provided credentials.", "code": "authentication_failed"},
+            status=status.HTTP_401_UNAUTHORIZED,
+        )
+
         user = authenticate(request, username=email, password=password)
         if user is None:
-            return Response(
-                {"detail": "Invalid credentials."},
-                status=status.HTTP_401_UNAUTHORIZED,
-            )
+            return _auth_failed
 
         refresh = RefreshToken.for_user(user)
         return Response({
