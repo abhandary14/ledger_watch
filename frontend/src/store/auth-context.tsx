@@ -65,6 +65,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const { data: me } = await getMeApi()
       const storage = rememberMe ? localStorage : sessionStorage
+      const altStorage = rememberMe ? sessionStorage : localStorage
+      altStorage.removeItem('refresh_token')
       storage.setItem('refresh_token', tokens.refresh)
       setUser(me)
     } catch (err) {
