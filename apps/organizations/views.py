@@ -1,6 +1,7 @@
 import secrets
 
 from django.core.cache import cache
+from django.db import IntegrityError
 from django.db import transaction as db_transaction
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status
@@ -167,23 +168,29 @@ class OrgMemberListCreateView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        with db_transaction.atomic():
-            member = User.objects.create_user(
-                email=email,
-                password=serializer.validated_data["password"],
-                organization_id=request.user.organization_id,
-                role=serializer.validated_data["role"],
-                first_name=serializer.validated_data.get("first_name", ""),
-                last_name=serializer.validated_data.get("last_name", ""),
-            )
-            AuditLog.objects.create(
-                organization_id=request.user.organization_id,
-                event_type="USER_REGISTERED",
-                metadata={
-                    "user_id": str(member.id),
-                    "created_by": str(request.user.id),
-                    "role": member.role,
-                },
+        try:
+            with db_transaction.atomic():
+                member = User.objects.create_user(
+                    email=email,
+                    password=serializer.validated_data["password"],
+                    organization_id=request.user.organization_id,
+                    role=serializer.validated_data["role"],
+                    first_name=serializer.validated_data.get("first_name", ""),
+                    last_name=serializer.validated_data.get("last_name", ""),
+                )
+                AuditLog.objects.create(
+                    organization_id=request.user.organization_id,
+                    event_type="USER_REGISTERED",
+                    metadata={
+                        "user_id": str(member.id),
+                        "created_by": str(request.user.id),
+                        "role": member.role,
+                    },
+                )
+        except IntegrityError:
+            return Response(
+                {"email": ["A user with this email already exists."]},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         return Response(OrgMemberSerializer(member).data, status=status.HTTP_201_CREATED)
