@@ -236,18 +236,19 @@ class OrgMemberDetailView(APIView):
         serializer = UpdateMemberRoleSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        member.role = serializer.validated_data["role"]
-        member.save(update_fields=["role"])
+        with db_transaction.atomic():
+            member.role = serializer.validated_data["role"]
+            member.save(update_fields=["role"])
 
-        AuditLog.objects.create(
-            organization_id=request.user.organization_id,
-            event_type="MEMBER_ROLE_UPDATED",
-            metadata={
-                "member_id": str(member.id),
-                "new_role": member.role,
-                "updated_by": str(request.user.id),
-            },
-        )
+            AuditLog.objects.create(
+                organization_id=request.user.organization_id,
+                event_type="MEMBER_ROLE_UPDATED",
+                metadata={
+                    "member_id": str(member.id),
+                    "new_role": member.role,
+                    "updated_by": str(request.user.id),
+                },
+            )
 
         return Response(OrgMemberSerializer(member).data)
 
@@ -282,17 +283,18 @@ class OrgMemberDetailView(APIView):
         if err:
             return Response({"detail": err}, status=status.HTTP_400_BAD_REQUEST)
 
-        AuditLog.objects.create(
-            organization_id=request.user.organization_id,
-            event_type="MEMBER_REMOVED",
-            metadata={
-                "member_id": str(member.id),
-                "member_email": member.email,
-                "removed_by": str(request.user.id),
-            },
-        )
+        with db_transaction.atomic():
+            AuditLog.objects.create(
+                organization_id=request.user.organization_id,
+                event_type="MEMBER_REMOVED",
+                metadata={
+                    "member_id": str(member.id),
+                    "member_email": member.email,
+                    "removed_by": str(request.user.id),
+                },
+            )
 
-        member.delete()
+            member.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
