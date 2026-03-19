@@ -50,8 +50,8 @@ class CreateMemberSerializer(serializers.Serializer):
     email = serializers.EmailField()
     password = serializers.CharField(min_length=8, write_only=True)
     role = serializers.ChoiceField(choices=["admin", "employee"])
-    first_name = serializers.CharField(max_length=100, required=False, default="")
-    last_name = serializers.CharField(max_length=100, required=False, default="")
+    first_name = serializers.CharField(max_length=100, required=False, default="", allow_blank=True)
+    last_name = serializers.CharField(max_length=100, required=False, default="", allow_blank=True)
 
     def validate_password(self, value):
         try:
