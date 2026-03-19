@@ -4,6 +4,7 @@ Views for the transactions app.
 Thin views — all business logic lives in TransactionService.
 """
 
+from django.db import transaction as db_transaction
 from django.shortcuts import get_object_or_404
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema, extend_schema_view, inline_serializer
@@ -14,6 +15,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.audit.models import AuditLog
 from apps.transactions.filters import TransactionFilter
 from apps.transactions.models import Transaction
 from apps.transactions.serializers import TransactionImportSerializer, TransactionSerializer
@@ -181,9 +183,26 @@ class TransactionDeleteView(APIView):
         },
     )
     def delete(self, request, pk):
-        transaction = get_object_or_404(
-            Transaction.objects.filter(organization_id=request.user.organization_id),
-            pk=pk,
-        )
-        transaction.delete()
+        with db_transaction.atomic():
+            transaction = get_object_or_404(
+                Transaction.objects.filter(
+                    organization_id=request.user.organization_id
+                ).select_for_update(),
+                pk=pk,
+            )
+
+            AuditLog.objects.create(
+                organization_id=transaction.organization_id,
+                event_type="TRANSACTION_DELETED",
+                metadata={
+                    "transaction_id": str(transaction.id),
+                    "vendor": transaction.vendor,
+                    "amount": str(transaction.amount),
+                    "date": str(transaction.date),
+                    "deleted_by": str(request.user.id),
+                },
+            )
+
+            transaction.delete()
+
         return Response(status=status.HTTP_204_NO_CONTENT)
