@@ -265,10 +265,18 @@ class AlertDeleteView(APIView):
         },
     )
     def delete(self, request, pk):
-        from django.shortcuts import get_object_or_404
-        alert = get_object_or_404(
-            Alert.objects.filter(organization_id=request.user.organization_id),
-            pk=pk,
-        )
-        alert.delete()
+        with transaction.atomic():
+            alert = get_object_or_404(
+                Alert.objects.filter(organization_id=request.user.organization_id).select_for_update(),
+                pk=pk,
+            )
+
+            AuditLog.objects.create(
+                organization_id=alert.organization_id,
+                event_type="ALERT_DELETED",
+                metadata={"alert_id": str(alert.id), "alert_type": alert.alert_type},
+            )
+
+            alert.delete()
+
         return Response(status=status.HTTP_204_NO_CONTENT)
