@@ -105,8 +105,13 @@ function AddMemberDialog() {
     },
   })
 
+  function handleOpenChange(nextOpen: boolean) {
+    if (!nextOpen) reset()
+    setOpen(nextOpen)
+  }
+
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button size="sm">
           <UserPlus className="mr-2 size-4" />
@@ -167,6 +172,13 @@ function EditRoleDialog({ member }: { member: OrgMember }) {
   )
   const queryClient = useQueryClient()
 
+  const initialRole: 'admin' | 'employee' = member.role === 'owner' ? 'admin' : member.role
+
+  function handleOpenChange(nextOpen: boolean) {
+    setOpen(nextOpen)
+    if (nextOpen) setSelectedRole(initialRole)
+  }
+
   const { mutate: updateRole, isPending } = useMutation({
     mutationFn: () => updateMemberRoleApi(member.id, selectedRole),
     onSuccess: () => {
@@ -183,7 +195,7 @@ function EditRoleDialog({ member }: { member: OrgMember }) {
   })
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
           <Pencil className="size-3.5" />
@@ -226,6 +238,7 @@ function RemoveMemberDialog({ member }: { member: OrgMember }) {
   const [challenge, setChallenge] = useState('')
   const [password, setPassword] = useState('')
   const [challengeInput, setChallengeInput] = useState('')
+  const [challengeError, setChallengeError] = useState(false)
   const queryClient = useQueryClient()
 
   const { refetch: fetchChallenge, isFetching: isFetchingChallenge } = useQuery({
@@ -234,15 +247,20 @@ function RemoveMemberDialog({ member }: { member: OrgMember }) {
     enabled: false,
   })
 
+  function loadChallenge() {
+    setChallengeError(false)
+    setChallenge('')
+    fetchChallenge()
+      .then(({ data }) => { if (data) setChallenge(data) })
+      .catch(() => { setChallengeError(true) })
+  }
+
   function handleOpen(value: boolean) {
     setOpen(value)
     if (value) {
       setPassword('')
       setChallengeInput('')
-      setChallenge('')
-      fetchChallenge().then(({ data }) => {
-        if (data) setChallenge(data)
-      })
+      loadChallenge()
     }
   }
 
@@ -258,10 +276,8 @@ function RemoveMemberDialog({ member }: { member: OrgMember }) {
         (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
         'Failed to remove member'
       toast.error(msg)
-      // Refresh challenge after failed attempt
-      setChallenge('')
       setChallengeInput('')
-      fetchChallenge().then(({ data }) => { if (data) setChallenge(data) })
+      loadChallenge()
     },
   })
 
@@ -295,7 +311,18 @@ function RemoveMemberDialog({ member }: { member: OrgMember }) {
           </div>
           <div className="space-y-1.5">
             <Label>Security challenge</Label>
-            {isFetchingChallenge || !challenge ? (
+            {challengeError ? (
+              <div className="flex items-center gap-2 rounded border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                <span>Failed to load challenge.</span>
+                <button
+                  type="button"
+                  className="ml-auto underline hover:no-underline"
+                  onClick={loadChallenge}
+                >
+                  Retry
+                </button>
+              </div>
+            ) : isFetchingChallenge || !challenge ? (
               <div className="h-8 animate-pulse rounded bg-muted" />
             ) : (
               <code
@@ -316,7 +343,7 @@ function RemoveMemberDialog({ member }: { member: OrgMember }) {
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-          <Button variant="destructive" onClick={() => removeMember()} disabled={isPending || !canSubmit}>
+          <Button variant="destructive" onClick={() => removeMember()} disabled={isPending || !canSubmit || challengeError}>
             {isPending ? 'Removing…' : 'Remove'}
           </Button>
         </DialogFooter>
@@ -332,6 +359,7 @@ function TransferOwnershipDialog({ member }: { member: OrgMember }) {
   const [challenge, setChallenge] = useState('')
   const [password, setPassword] = useState('')
   const [challengeInput, setChallengeInput] = useState('')
+  const [challengeError, setChallengeError] = useState(false)
   const { logout } = useAuth()
   const navigate = useNavigate()
 
@@ -343,15 +371,20 @@ function TransferOwnershipDialog({ member }: { member: OrgMember }) {
     enabled: false,
   })
 
+  function loadChallenge() {
+    setChallengeError(false)
+    setChallenge('')
+    fetchChallenge()
+      .then(({ data }) => { if (data) setChallenge(data) })
+      .catch(() => { setChallengeError(true) })
+  }
+
   function handleOpen(value: boolean) {
     setOpen(value)
     if (value) {
       setPassword('')
       setChallengeInput('')
-      setChallenge('')
-      fetchChallenge().then(({ data }) => {
-        if (data) setChallenge(data)
-      })
+      loadChallenge()
     }
   }
 
@@ -368,10 +401,8 @@ function TransferOwnershipDialog({ member }: { member: OrgMember }) {
         (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
         'Failed to transfer ownership'
       toast.error(msg)
-      // Refresh challenge after failed attempt
-      setChallenge('')
       setChallengeInput('')
-      fetchChallenge().then(({ data }) => { if (data) setChallenge(data) })
+      loadChallenge()
     },
   })
 
@@ -414,7 +445,18 @@ function TransferOwnershipDialog({ member }: { member: OrgMember }) {
           </div>
           <div className="space-y-1.5">
             <Label>Security challenge</Label>
-            {isFetchingChallenge || !challenge ? (
+            {challengeError ? (
+              <div className="flex items-center gap-2 rounded border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                <span>Failed to load challenge.</span>
+                <button
+                  type="button"
+                  className="ml-auto underline hover:no-underline"
+                  onClick={loadChallenge}
+                >
+                  Retry
+                </button>
+              </div>
+            ) : isFetchingChallenge || !challenge ? (
               <div className="h-8 animate-pulse rounded bg-muted" />
             ) : (
               <code
@@ -438,7 +480,7 @@ function TransferOwnershipDialog({ member }: { member: OrgMember }) {
           <Button
             variant="destructive"
             onClick={() => transfer()}
-            disabled={isPending || !canSubmit}
+            disabled={isPending || !canSubmit || challengeError}
           >
             {isPending ? 'Transferring…' : 'Transfer & Sign Out'}
           </Button>
