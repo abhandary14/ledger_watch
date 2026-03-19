@@ -726,7 +726,7 @@ function ResizeHandle({ onMouseDown }: { onMouseDown: (e: React.MouseEvent) => v
   return (
     <div
       className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none group/rh"
-      onMouseDown={onMouseDown}
+      onMouseDown={(e) => { e.stopPropagation(); onMouseDown(e) }}
     >
       <div className="absolute right-0 top-1 h-[calc(100%-8px)] w-px bg-border opacity-0 transition-opacity group-hover/rh:opacity-100" />
     </div>
@@ -843,7 +843,8 @@ export function TransactionsPage() {
   const urlOrdering = searchParams.get('ordering') ?? ''
   const page = parseInt(searchParams.get('page') ?? '1', 10)
   const pageSizeParam = searchParams.get('page_size') ?? '25'
-  const pageSize = pageSizeParam === 'all' ? 1000 : parseInt(pageSizeParam, 10)
+  // 'all' is passed as-is to the backend; numeric strings are parsed for local totalPages math.
+  const pageSize = pageSizeParam === 'all' ? null : parseInt(pageSizeParam, 10)
 
   const dateFrom = urlDateFrom ? new Date(urlDateFrom) : undefined
   const dateTo = urlDateTo ? new Date(urlDateTo) : undefined
@@ -921,7 +922,7 @@ export function TransactionsPage() {
   // Build query params
   const queryParams: Record<string, string> = {
     page: String(page),
-    page_size: String(pageSize),
+    page_size: pageSizeParam,  // send 'all' literally when selected
   }
   if (urlVendor) queryParams.vendor = urlVendor
   if (urlCategory) queryParams.category = urlCategory
@@ -941,7 +942,7 @@ export function TransactionsPage() {
     staleTime: 60_000,
   })
 
-  const totalPages = data ? Math.max(1, Math.ceil(data.count / pageSize)) : 1
+  const totalPages = data && pageSize ? Math.max(1, Math.ceil(data.count / pageSize)) : 1
 
   function setPage(p: number) {
     setSearchParams((prev) => {
@@ -1008,11 +1009,15 @@ export function TransactionsPage() {
           <TableHeader>
             <TableRow>
               <TableHead
-                className="relative cursor-pointer select-none whitespace-nowrap"
+                className="relative whitespace-nowrap"
                 style={{ width: colW[0] }}
-                onClick={() => handleSort('date')}
               >
-                Date <SortIcon field="date" sortField={sortField} sortDir={sortDir} />
+                <button
+                  className="flex cursor-pointer select-none items-center"
+                  onClick={() => handleSort('date')}
+                >
+                  Date <SortIcon field="date" sortField={sortField} sortDir={sortDir} />
+                </button>
                 <ResizeHandle onMouseDown={(e) => startResize(0, e)} />
               </TableHead>
               <TableHead className="relative" style={{ width: colW[1] }}>
@@ -1024,11 +1029,15 @@ export function TransactionsPage() {
                 <ResizeHandle onMouseDown={(e) => startResize(2, e)} />
               </TableHead>
               <TableHead
-                className="relative cursor-pointer select-none whitespace-nowrap text-right"
+                className="relative whitespace-nowrap text-right"
                 style={{ width: colW[3] }}
-                onClick={() => handleSort('amount')}
               >
-                Amount <SortIcon field="amount" sortField={sortField} sortDir={sortDir} />
+                <button
+                  className="ml-auto flex cursor-pointer select-none items-center"
+                  onClick={() => handleSort('amount')}
+                >
+                  Amount <SortIcon field="amount" sortField={sortField} sortDir={sortDir} />
+                </button>
                 <ResizeHandle onMouseDown={(e) => startResize(3, e)} />
               </TableHead>
               <TableHead className="relative" style={{ width: colW[4] }}>
