@@ -210,7 +210,7 @@ __marimo__/
 instructions.txt
 # DevContext - AI coding context
 .devctx/
-/plan.md
+/plans/*
 explanations/
 postman/
 .postman/
@@ -219,5 +219,4 @@ postman/
 /settings.json
 /agent_team_instructions.json
 observations/
-/plan_frontend.md
 /.claude/
