@@ -40,13 +40,8 @@ export function LoginPage() {
     try {
       await login(data.email, data.password, rememberMe)
       navigate('/dashboard')
-    } catch (err: unknown) {
-      const status = (err as { response?: { status?: number } })?.response?.status
-      if (status === 404) {
-        toast.error('User does not exist. Sign up as a new organization or contact your admin.')
-      } else {
-        toast.error('Invalid credentials. Please check your email and password.')
-      }
+    } catch {
+      toast.error('Invalid credentials. Please check your email and password.')
     } finally {
       setIsLoading(false)
     }
