@@ -102,6 +102,12 @@ class Command(BaseCommand):
             help="Delete all existing transactions for the target org before seeding.",
         )
         parser.add_argument(
+            "--clear-only",
+            action="store_true",
+            default=False,
+            help="Delete all existing transactions for the target org and exit without seeding.",
+        )
+        parser.add_argument(
             "--seed",
             type=int,
             default=None,
@@ -113,7 +119,7 @@ class Command(BaseCommand):
         rng = random.Random(options["seed"])
 
         org_name: str = options["org"]
-        do_clear: bool = options["clear"]
+        do_clear: bool = options["clear"] or options["clear_only"]
 
         # ------------------------------------------------------------------
         # 1. Ensure organization exists
@@ -133,12 +139,15 @@ class Command(BaseCommand):
                 self.style.WARNING(f"Cleared {deleted_count} existing transactions.")
             )
 
+        if options["clear_only"]:
+            return
+
         # ------------------------------------------------------------------
         # 3. Determine date window — 6 months ending today
         # ------------------------------------------------------------------
         today = date.today()
-        # month_starts[0] = 5 months ago (oldest), month_starts[5] = current month
-        month_starts = [_month_start(today, offset) for offset in range(5, -1, -1)]
+        # month_starts[0] = 11 months ago (oldest), month_starts[11] = current month
+        month_starts = [_month_start(today, offset) for offset in range(11, -1, -1)]
 
         # ------------------------------------------------------------------
         # 4. Build transaction list

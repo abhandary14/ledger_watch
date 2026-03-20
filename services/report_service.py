@@ -289,6 +289,7 @@ class ReportService:
         )
         message = client.messages.create(
             model=settings.ANTHROPIC_MODEL,
+            temperature=0.1,
             max_tokens=2048,
             system=_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": user_message}],
