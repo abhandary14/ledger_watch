@@ -261,7 +261,7 @@ class ReportService:
                 elif alert_type == "vendor_spike":
                     finding["vendors"] = [
                         {
-                            "vendor": v["vendor"],
+                            "vendor": v.get("vendor"),
                             "percent_increase": float(v["increase_pct"]) if v.get("increase_pct") is not None else None,
                         }
                         for v in rs.get("flagged_vendors", [])
