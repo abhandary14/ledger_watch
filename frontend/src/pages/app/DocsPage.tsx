@@ -90,6 +90,8 @@ function PermTable() {
     ['Run analysis', false, true, true],
     ['Acknowledge / resolve / reopen alerts', false, true, true],
     ['Delete transactions or alerts', false, true, true],
+    ['Generate weekly report', false, false, true],
+    ['Rename organization', false, false, true],
     ['Add members to the organization', false, false, true],
     ['Edit member roles / remove members', false, false, true],
     ['Transfer ownership', false, false, true],

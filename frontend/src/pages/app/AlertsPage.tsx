@@ -141,7 +141,7 @@ export function AlertsPage() {
   const { user } = useAuth()
   const canReopen = user?.role === 'owner' || user?.role === 'admin'
   const canDelete = user?.role === 'owner' || user?.role === 'admin'
-  const canGenerateReport = user?.role === 'owner' || user?.role === 'admin'
+  const canGenerateReport = user?.role === 'owner'
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [alertToDelete, setAlertToDelete] = useState<string | null>(null)
 
