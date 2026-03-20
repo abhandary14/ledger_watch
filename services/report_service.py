@@ -310,9 +310,7 @@ class ReportService:
                 f"Claude returned unexpected format: {exc}\nRaw response: {raw[:300]}"
             ) from exc
 
-    # ------------------------------------------------------------------
-    # PDF rendering
-    # ------------------------------------------------------------------
+    # pdf rendering
 
     @staticmethod
     def _render_pdf(
@@ -456,9 +454,7 @@ class ReportService:
         if result.err:
             raise RuntimeError(f"PDF generation failed with {result.err} error(s).")
 
-    # ------------------------------------------------------------------
-    # File naming helpers
-    # ------------------------------------------------------------------
+    # file naming helpers
 
     @staticmethod
     def _fail_run(
