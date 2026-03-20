@@ -274,8 +274,11 @@ export function AlertsPage() {
       }
     },
     onError: (err: unknown) => {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      if (detail?.includes('API key')) {
+      const response = (err as { response?: { status?: number; data?: { detail?: string } } })?.response
+      const isApiKeyError =
+        response?.status === 503 ||
+        response?.data?.detail?.toUpperCase()?.includes('ANTHROPIC_API_KEY')
+      if (isApiKeyError) {
         toast.error('Report generation is not configured. Contact your administrator.')
       } else {
         toast.error('Report generation failed. Please try again.')
