@@ -268,7 +268,7 @@ class ReportService:
                     ]
                 elif alert_type == "duplicate":
                     finding["pairs"] = [
-                        {"vendor": g["vendor"], "amount": g["amount"]}
+                        {"vendor": g.get("vendor"), "amount": g.get("amount")}
                         for g in rs.get("duplicate_groups", [])
                     ]
 
