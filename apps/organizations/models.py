@@ -21,6 +21,7 @@ class Organization(models.Model):
     )
     name = models.CharField(
         max_length=255,
+        unique=True,
         help_text="Human-readable name of the organization (e.g. 'Acme Corp').",
     )
     created_at = models.DateTimeField(
