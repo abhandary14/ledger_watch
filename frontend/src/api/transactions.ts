@@ -39,7 +39,7 @@ export function getTransactionFilterOptionsApi() {
 }
 
 export function importTransactionsApi(transactions: TransactionImportRow[]) {
-  return apiClient.post<{ imported: number }>('/api/v1/transactions/import', { transactions })
+  return apiClient.post<{ imported: number; skipped: number }>('/api/v1/transactions/import', { transactions })
 }
 
 export function deleteTransactionApi(id: string) {

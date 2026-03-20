@@ -20,7 +20,7 @@ from apps.transactions.filters import TransactionFilter
 from apps.transactions.models import Transaction
 from apps.transactions.serializers import TransactionImportSerializer, TransactionSerializer
 from apps.users.permissions import IsAdminOrOwner
-from services.transaction_service import TransactionService
+from services.transaction_service import DuplicateImportError, TransactionService
 
 
 class TransactionImportView(APIView):
@@ -28,6 +28,7 @@ class TransactionImportView(APIView):
     POST /api/v1/transactions/import
 
     Bulk-import a list of transactions for the authenticated user's organization.
+    Duplicate rows (same date, vendor, amount) are automatically skipped.
     """
 
     permission_classes = [IsAuthenticated]
@@ -37,16 +38,20 @@ class TransactionImportView(APIView):
         summary="Bulk import transactions",
         description=(
             "Atomically imports a list of transactions for the authenticated user's "
-            "organization. All rows are validated before any are persisted. "
-            "An audit log entry is written on success."
+            "organization. Rows that already exist (same date, vendor, amount) are "
+            "skipped. Returns 409 if all rows are duplicates."
         ),
         request=TransactionImportSerializer,
         responses={
             201: inline_serializer(
                 "ImportResult",
-                fields={"imported": serializers.IntegerField()},
+                fields={
+                    "imported": serializers.IntegerField(),
+                    "skipped": serializers.IntegerField(),
+                },
             ),
             400: OpenApiResponse(description="Validation error — invalid fields or empty list."),
+            409: OpenApiResponse(description="All transactions have already been imported."),
         },
     )
     def post(self, request):
@@ -56,10 +61,16 @@ class TransactionImportView(APIView):
         org_id = request.user.organization_id
         tx_data = serializer.validated_data["transactions"]
 
-        created = TransactionService.bulk_import(str(org_id), tx_data)
+        try:
+            result = TransactionService.bulk_import(str(org_id), tx_data)
+        except DuplicateImportError as e:
+            return Response(
+                {"detail": str(e)},
+                status=status.HTTP_409_CONFLICT,
+            )
 
         return Response(
-            {"imported": len(created)},
+            {"imported": len(result["created"]), "skipped": result["skipped"]},
             status=status.HTTP_201_CREATED,
         )
 

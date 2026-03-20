@@ -400,6 +400,7 @@ function ImportCsvDialog({ open, onOpenChange }: ImportCsvDialogProps) {
   const [validationResults, setValidationResults] = React.useState<ValidationResult[]>([])
   const [importResult, setImportResult] = React.useState<{
     success?: number
+    skipped?: number
     error?: string
   } | null>(null)
   const [isDragging, setIsDragging] = React.useState(false)
@@ -409,12 +410,17 @@ function ImportCsvDialog({ open, onOpenChange }: ImportCsvDialogProps) {
     mutationFn: (rows: TransactionImportRow[]) => importTransactionsApi(rows),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['transactions'] })
-      setImportResult({ success: res.data.imported })
+      setImportResult({ success: res.data.imported, skipped: res.data.skipped })
       setStep(4)
     },
     onError: (err: unknown) => {
-      const msg =
-        err instanceof Error ? err.message : 'Import failed. Please check your data and try again.'
+      let msg = 'Import failed. Please check your data and try again.'
+      if (err && typeof err === 'object' && 'response' in err) {
+        const axiosErr = err as { response?: { data?: { detail?: string } } }
+        if (axiosErr.response?.data?.detail) {
+          msg = axiosErr.response.data.detail
+        }
+      }
       setImportResult({ error: msg })
       setStep(4)
     },
@@ -708,6 +714,11 @@ function ImportCsvDialog({ open, onOpenChange }: ImportCsvDialogProps) {
                   Successfully imported {importResult?.success ?? validCount} transaction
                   {(importResult?.success ?? validCount) !== 1 ? 's' : ''}
                 </p>
+                {(importResult?.skipped ?? 0) > 0 && (
+                  <p className="mt-1 text-amber-600 dark:text-amber-400">
+                    {importResult!.skipped} duplicate transaction{importResult!.skipped !== 1 ? 's were' : ' was'} skipped (already imported).
+                  </p>
+                )}
               </div>
             )}
             <DialogFooter>
