@@ -23,12 +23,15 @@ from __future__ import annotations
 
 import html as _html
 import json
+import logging
 import re
 import traceback
 from collections import defaultdict
 from datetime import date
 from pathlib import Path
 from uuid import UUID
+
+_logger = logging.getLogger(__name__)
 
 import bleach
 
@@ -154,26 +157,13 @@ class ReportService:
 
             output_dir = Path(settings.REPORT_OUTPUT_DIR)
             output_dir.mkdir(parents=True, exist_ok=True)
-            pdf_path = ReportService._unique_path(output_dir, org.name, date.today())
+            pdf_path = ReportService._unique_path(output_dir, org.name, date.today(), report_run.id)
             ReportService._render_pdf(pdf_path, org.name, date.today(), alerts, narrative_html)
 
-        except Exception:
-            error_msg = traceback.format_exc()[-500:]
-            # Release alert claims so they are picked up by the next report run.
-            Alert.objects.filter(report_run_id=report_run.id).update(report_run_id=None)
-            report_run.status = ReportRun.Status.FAILED
-            report_run.error_message = error_msg
-            report_run.save(update_fields=["status", "error_message"])
-            AuditLog.objects.create(
-                organization_id=organization_id,
-                event_type="REPORT_GENERATED",
-                metadata={
-                    "report_run_id": str(report_run.id),
-                    "triggered_by": triggered_by,
-                    "alert_count": len(alerts),
-                    "status": ReportRun.Status.FAILED,
-                },
-            )
+        except Exception as e:
+            error_msg = f"{type(e).__name__}: {e}"
+            _logger.exception("Report generation failed for org %s run %s", organization_id, report_run.id)
+            ReportService._fail_run(report_run, organization_id, triggered_by, len(alerts), error_msg)
             raise
 
         try:
@@ -181,23 +171,29 @@ class ReportService:
         except ValueError:
             relative_path = str(pdf_path)
 
-        with transaction.atomic():
-            Alert.objects.filter(report_run_id=report_run.id).update(reported=True)
-            report_run.status = ReportRun.Status.SUCCEEDED
-            report_run.report_path = relative_path
-            report_run.alert_count = len(alerts)
-            report_run.save(update_fields=["status", "report_path", "alert_count"])
-            AuditLog.objects.create(
-                organization_id=organization_id,
-                event_type="REPORT_GENERATED",
-                metadata={
-                    "report_run_id": str(report_run.id),
-                    "triggered_by": triggered_by,
-                    "alert_count": len(alerts),
-                    "report_path": relative_path,
-                    "status": ReportRun.Status.SUCCEEDED,
-                },
-            )
+        try:
+            with transaction.atomic():
+                Alert.objects.filter(report_run_id=report_run.id).update(reported=True)
+                report_run.status = ReportRun.Status.SUCCEEDED
+                report_run.report_path = relative_path
+                report_run.alert_count = len(alerts)
+                report_run.save(update_fields=["status", "report_path", "alert_count"])
+                AuditLog.objects.create(
+                    organization_id=organization_id,
+                    event_type="REPORT_GENERATED",
+                    metadata={
+                        "report_run_id": str(report_run.id),
+                        "triggered_by": triggered_by,
+                        "alert_count": len(alerts),
+                        "report_path": relative_path,
+                        "status": ReportRun.Status.SUCCEEDED,
+                    },
+                )
+        except Exception as e:
+            error_msg = f"{type(e).__name__}: {e}"
+            _logger.exception("Failed to commit report run %s for org %s", report_run.id, organization_id)
+            ReportService._fail_run(report_run, organization_id, triggered_by, len(alerts), error_msg)
+            raise
 
         return report_run
 
@@ -461,20 +457,46 @@ class ReportService:
     # ------------------------------------------------------------------
 
     @staticmethod
+    def _fail_run(
+        report_run: ReportRun,
+        organization_id,
+        triggered_by: str,
+        alert_count: int,
+        error_msg: str,
+    ) -> None:
+        """
+        Unclaim alerts and mark the ReportRun as FAILED.
+
+        Called from both the Claude/PDF failure path and the success-commit
+        failure path so cleanup is always consistent.
+        """
+        Alert.objects.filter(report_run_id=report_run.id).update(report_run_id=None)
+        report_run.status = ReportRun.Status.FAILED
+        report_run.error_message = error_msg
+        report_run.save(update_fields=["status", "error_message"])
+        AuditLog.objects.create(
+            organization_id=organization_id,
+            event_type="REPORT_GENERATED",
+            metadata={
+                "report_run_id": str(report_run.id),
+                "triggered_by": triggered_by,
+                "alert_count": alert_count,
+                "status": ReportRun.Status.FAILED,
+            },
+        )
+
+    @staticmethod
     def _slugify(name: str) -> str:
         return re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
 
     @staticmethod
-    def _unique_path(output_dir: Path, org_name: str, report_date: date) -> Path:
-        """Return a path that doesn't already exist, appending _2, _3, etc. if needed."""
+    def _unique_path(output_dir: Path, org_name: str, report_date: date, run_id) -> Path:
+        """
+        Return a deterministic path for this report run.
+
+        Embeds a short token derived from run_id so the filename is unique
+        per run without any filesystem check or counter loop.
+        """
         slug = ReportService._slugify(org_name)
-        base = f"{slug}_{report_date.isoformat()}"
-        path = output_dir / f"{base}.pdf"
-        if not path.exists():
-            return path
-        n = 2
-        while True:
-            path = output_dir / f"{base}_{n}.pdf"
-            if not path.exists():
-                return path
-            n += 1
+        short_id = str(run_id).replace("-", "")[:12]
+        return output_dir / f"{slug}_{report_date.isoformat()}_{short_id}.pdf"
