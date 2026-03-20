@@ -324,7 +324,7 @@ function OrganizationTab() {
                     <code className="rounded bg-muted px-2 py-1 text-xs font-mono">
                       {user?.organization?.id}
                     </code>
-                    <Button variant="ghost" size="sm" className="h-7 px-2" onClick={copyId}>
+                    <Button variant="ghost" size="sm" className="h-7 px-2" onClick={copyId} aria-label={copied ? 'Copied ID' : 'Copy ID'}>
                       {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
                     </Button>
                   </div>
