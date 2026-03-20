@@ -170,7 +170,7 @@ function ProfileTab() {
               </div>
               <div>
                 <p className="text-muted-foreground">Role</p>
-                <p className="font-medium capitalize">{(user as unknown as { role?: string })?.role ?? '—'}</p>
+                <p className="font-medium capitalize">{user?.role ?? '—'}</p>
               </div>
               <div>
                 <p className="text-muted-foreground">First Name</p>
