@@ -3,6 +3,42 @@
 from django.db import migrations, models
 
 
+def resolve_duplicate_pending_runs(apps, schema_editor):
+    """
+    Before adding the partial unique constraint on (organization, analysis_type)
+    WHERE status='PENDING', ensure no duplicate PENDING rows exist.
+
+    For each (org, analysis_type) group with more than one PENDING run, keep
+    the most recent one (highest run_time) and mark the rest as FAILED.
+    """
+    AnalysisRun = apps.get_model('analytics', 'AnalysisRun')
+
+    from django.db.models import Count
+    duplicates = (
+        AnalysisRun.objects
+        .filter(status='PENDING')
+        .values('organization_id', 'analysis_type')
+        .annotate(cnt=Count('id'))
+        .filter(cnt__gt=1)
+    )
+
+    for group in duplicates:
+        runs = list(
+            AnalysisRun.objects
+            .filter(
+                organization_id=group['organization_id'],
+                analysis_type=group['analysis_type'],
+                status='PENDING',
+            )
+            .order_by('-run_time')
+        )
+        # Keep the most recent; mark all others FAILED.
+        for stale in runs[1:]:
+            stale.status = 'FAILED'
+            stale.error_message = 'Marked FAILED by migration: duplicate PENDING run resolved.'
+            stale.save(update_fields=['status', 'error_message'])
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -11,6 +47,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        migrations.RunPython(resolve_duplicate_pending_runs, migrations.RunPython.noop),
         migrations.AddConstraint(
             model_name='analysisrun',
             constraint=models.UniqueConstraint(condition=models.Q(('status', 'PENDING')), fields=('organization', 'analysis_type'), name='analysisrun_one_pending_per_org_type'),
