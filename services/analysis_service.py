@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 
 from apps.analytics.models import AnalysisRun
 from apps.audit.models import AuditLog
@@ -82,12 +82,18 @@ class AnalysisService:
             if last_succeeded and last_succeeded["run_time"] >= latest_tx["created_at"]:
                 raise AlreadyCurrentError(analysis_type)
 
-        with transaction.atomic():
-            run = AnalysisRun.objects.create(
-                organization_id=organization_id,
-                analysis_type=analysis_type,
-                # status defaults to PENDING; results_summary/error_message are NULL.
-            )
+        try:
+            with transaction.atomic():
+                run = AnalysisRun.objects.create(
+                    organization_id=organization_id,
+                    analysis_type=analysis_type,
+                    # status defaults to PENDING; results_summary/error_message are NULL.
+                )
+        except IntegrityError:
+            # A concurrent caller already created a PENDING run for this
+            # (org, analysis_type) pair — treat it the same as AlreadyCurrentError
+            # so the report pipeline skips this type gracefully.
+            raise AlreadyCurrentError(analysis_type)
 
         try:
             results = analyzer.run(organization_id)
