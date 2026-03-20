@@ -359,11 +359,17 @@ export function AnalysisPage() {
       toast.success('Analysis started')
     },
     onError: (err: unknown) => {
+      const axiosErr = err as {
+        response?: { status?: number; data?: { detail?: string; analysis_type?: string[] } }
+      }
+      if (axiosErr.response?.status === 409) {
+        toast.info('All data analyzed — no new transactions since the last run')
+        setRunError(null)
+        return
+      }
       const msg =
-        (err as { response?: { data?: { detail?: string; analysis_type?: string[] } } })?.response
-          ?.data?.detail ??
-        (err as { response?: { data?: { analysis_type?: string[] } } })?.response?.data
-          ?.analysis_type?.[0] ??
+        axiosErr.response?.data?.detail ??
+        axiosErr.response?.data?.analysis_type?.[0] ??
         'Analysis failed'
       setRunError(msg)
       setLastResult(null)

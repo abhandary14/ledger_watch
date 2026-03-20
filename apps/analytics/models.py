@@ -86,6 +86,15 @@ class AnalysisRun(models.Model):
         verbose_name = "Analysis Run"
         verbose_name_plural = "Analysis Runs"
         constraints = [
+            # At most one PENDING run per (org, type) at a time — prevents race
+            # conditions where two callers both pass the freshness guard and both
+            # create a PENDING run.  SUCCEEDED/FAILED rows are unrestricted so
+            # history is preserved.
+            models.UniqueConstraint(
+                fields=["organization", "analysis_type"],
+                condition=Q(status="PENDING"),
+                name="analysisrun_one_pending_per_org_type",
+            ),
             # PENDING: no results, no error.
             models.CheckConstraint(
                 condition=(

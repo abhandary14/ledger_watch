@@ -170,7 +170,7 @@ function ProfileTab() {
               </div>
               <div>
                 <p className="text-muted-foreground">Role</p>
-                <p className="font-medium capitalize">{(user as unknown as { role?: string })?.role ?? '—'}</p>
+                <p className="font-medium capitalize">{user?.role ?? '—'}</p>
               </div>
               <div>
                 <p className="text-muted-foreground">First Name</p>
@@ -251,6 +251,7 @@ function ProfileTab() {
 function OrganizationTab() {
   const { user } = useAuth()
   const [copied, setCopied] = useState(false)
+  const isOwner = user?.role === 'owner'
 
   const orgForm = useForm<OrgValues>({
     resolver: zodResolver(orgSchema),
@@ -288,45 +289,55 @@ function OrganizationTab() {
           <CardTitle className="text-base">Organization Details</CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* Editable name */}
-          <Form {...orgForm}>
-            <form
-              onSubmit={orgForm.handleSubmit((v) => saveOrg(v))}
-              className="max-w-sm space-y-3"
-            >
-              <FormField
-                control={orgForm.control}
-                name="name"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Organization Name</FormLabel>
-                    <FormControl>
-                      <Input {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <Button type="submit" size="sm" disabled={savingOrg}>
-                Save
-              </Button>
-            </form>
-          </Form>
+          {isOwner ? (
+            <>
+              {/* Editable name — owners only */}
+              <Form {...orgForm}>
+                <form
+                  onSubmit={orgForm.handleSubmit((v) => saveOrg(v))}
+                  className="max-w-sm space-y-3"
+                >
+                  <FormField
+                    control={orgForm.control}
+                    name="name"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Organization Name</FormLabel>
+                        <FormControl>
+                          <Input {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <Button type="submit" size="sm" disabled={savingOrg}>
+                    Save
+                  </Button>
+                </form>
+              </Form>
 
-          {/* Read-only fields */}
-          <div className="space-y-4 text-sm">
-            <div>
-              <Label className="text-muted-foreground">Organization ID</Label>
-              <div className="mt-1 flex items-center gap-2">
-                <code className="rounded bg-muted px-2 py-1 text-xs font-mono">
-                  {user?.organization?.id}
-                </code>
-                <Button variant="ghost" size="sm" className="h-7 px-2" onClick={copyId}>
-                  {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
-                </Button>
+              {/* Organization ID */}
+              <div className="space-y-4 text-sm">
+                <div>
+                  <Label className="text-muted-foreground">Organization ID</Label>
+                  <div className="mt-1 flex items-center gap-2">
+                    <code className="rounded bg-muted px-2 py-1 text-xs font-mono">
+                      {user?.organization?.id}
+                    </code>
+                    <Button variant="ghost" size="sm" className="h-7 px-2" onClick={copyId} aria-label={copied ? 'Copied ID' : 'Copy ID'}>
+                      {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
+                    </Button>
+                  </div>
+                </div>
               </div>
+            </>
+          ) : (
+            /* Read-only view for admins and employees */
+            <div className="text-sm">
+              <Label className="text-muted-foreground">Organization Name</Label>
+              <p className="mt-1 font-medium">{user?.organization?.name}</p>
             </div>
-          </div>
+          )}
         </CardContent>
       </Card>
     </div>

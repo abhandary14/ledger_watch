@@ -19,12 +19,14 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 
 from apps.analytics.models import AnalysisRun
 from apps.audit.models import AuditLog
+from apps.transactions.models import Transaction
 from factories.analyzer_factory import AnalyzerFactory
 from services.alert_service import AlertService
+from services.exceptions import AlreadyCurrentError
 
 
 class AnalysisService:
@@ -58,12 +60,45 @@ class AnalysisService:
         # so an unknown type returns a clean 400, not a FAILED AnalysisRun.
         analyzer = AnalyzerFactory.create(analysis_type)  # raises ValueError if unknown
 
-        with transaction.atomic():
-            run = AnalysisRun.objects.create(
+        # Guard: skip re-analysis if no new transactions have been imported since
+        # the last successful run of this type.
+        latest_tx = (
+            Transaction.objects.filter(organization_id=organization_id)
+            .order_by("-created_at")
+            .values("created_at")
+            .first()
+        )
+        if latest_tx is not None:
+            last_succeeded = (
+                AnalysisRun.objects.filter(
+                    organization_id=organization_id,
+                    analysis_type=analysis_type,
+                    status=AnalysisRun.Status.SUCCEEDED,
+                )
+                .order_by("-run_time")
+                .values("run_time")
+                .first()
+            )
+            if last_succeeded and last_succeeded["run_time"] >= latest_tx["created_at"]:
+                raise AlreadyCurrentError(analysis_type)
+
+        try:
+            with transaction.atomic():
+                run = AnalysisRun.objects.create(
+                    organization_id=organization_id,
+                    analysis_type=analysis_type,
+                    # status defaults to PENDING; results_summary/error_message are NULL.
+                )
+        except IntegrityError:
+            # Distinguish a uniqueness conflict on the partial PENDING index from
+            # any other integrity failure (FK violation, check constraint, etc.).
+            if AnalysisRun.objects.filter(
                 organization_id=organization_id,
                 analysis_type=analysis_type,
-                # status defaults to PENDING; results_summary/error_message are NULL.
-            )
+                status=AnalysisRun.Status.PENDING,
+            ).exists():
+                raise AlreadyCurrentError(analysis_type)
+            raise
 
         try:
             results = analyzer.run(organization_id)

@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     "apps.analytics",
     "apps.alerts",
     "apps.audit",
+    "apps.reports",
 ]
 
 AUTH_USER_MODEL = "users.User"
@@ -148,6 +149,17 @@ SIMPLE_JWT = {
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": True,
 }
+
+# ---------------------------------------------------------------------------
+# drf-spectacular (OpenAPI)
+# ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Anthropic / Report generation
+# ---------------------------------------------------------------------------
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+ANTHROPIC_MODEL   = os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5-20251001")
+_report_dir = Path(os.getenv("REPORT_OUTPUT_DIR", "reports"))
+REPORT_OUTPUT_DIR = _report_dir if _report_dir.is_absolute() else BASE_DIR / _report_dir
 
 # ---------------------------------------------------------------------------
 # drf-spectacular (OpenAPI)

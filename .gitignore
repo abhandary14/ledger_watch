@@ -61,6 +61,10 @@ local_settings.py
 db.sqlite3
 db.sqlite3-journal
 
+# Generated reports and logs
+reports/
+logs/
+
 # Flask stuff:
 instance/
 .webassets-cache
@@ -210,7 +214,7 @@ __marimo__/
 instructions.txt
 # DevContext - AI coding context
 .devctx/
-/plan.md
+/plans/*
 explanations/
 postman/
 .postman/
@@ -219,5 +223,4 @@ postman/
 /settings.json
 /agent_team_instructions.json
 observations/
-/plan_frontend.md
 /.claude/
