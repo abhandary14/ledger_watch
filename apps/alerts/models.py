@@ -68,6 +68,18 @@ class Alert(models.Model):
         db_index=True,
         help_text="True once this alert has been included in a generated report",
     )
+    report_run = models.ForeignKey(
+        "reports.ReportRun",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="claimed_alerts",
+        db_index=True,
+        help_text=(
+            "The ReportRun that has claimed this alert for inclusion in a report. "
+            "NULL means unclaimed and available for the next report."
+        ),
+    )
 
     class Meta:
         ordering = ["-created_at"]

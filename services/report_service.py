@@ -21,6 +21,7 @@ On any exception in steps 5–7:
 
 from __future__ import annotations
 
+import html as _html
 import json
 import re
 import traceback
@@ -28,6 +29,8 @@ from collections import defaultdict
 from datetime import date
 from pathlib import Path
 from uuid import UUID
+
+import bleach
 
 import anthropic
 from django.conf import settings
@@ -42,6 +45,10 @@ from apps.reports.models import ReportRun
 from factories.analyzer_factory import AnalyzerFactory
 from services.analysis_service import AnalysisService
 from services.exceptions import AlreadyCurrentError
+
+# Tags and attributes Claude is instructed to emit; everything else is stripped.
+_NARRATIVE_ALLOWED_TAGS = ["h2", "h3", "p", "ul", "ol", "li", "strong", "em", "b", "i", "span", "br"]
+_NARRATIVE_ALLOWED_ATTRS: dict = {"*": ["style"]}
 
 _SYSTEM_PROMPT = (
     "You are a financial risk analyst generating a weekly monitoring report for a small business.\n"
@@ -113,15 +120,31 @@ class ReportService:
             )
             raise RuntimeError(error_msg)
 
-        alerts = list(
-            Alert.objects.filter(
-                organization_id=organization_id,
-                reported=False,
-            ).order_by("created_at")
+        # Create a PENDING ReportRun immediately to serve as a durable claim token.
+        # This record is updated in-place to SUCCEEDED or FAILED; it is never left PENDING.
+        report_run = ReportRun.objects.create(
+            organization_id=organization_id,
+            triggered_by=triggered_by,
+            status=ReportRun.Status.PENDING,
         )
 
-        if not alerts:
+        # Atomically claim all unreported, unclaimed alerts for this run.
+        # The WHERE report_run__isnull=True guard means each alert is claimed by
+        # exactly one ReportRun even under concurrent calls.
+        with transaction.atomic():
+            claimed_count = Alert.objects.filter(
+                organization_id=organization_id,
+                reported=False,
+                report_run__isnull=True,
+            ).update(report_run_id=report_run.id)
+
+        if claimed_count == 0:
+            report_run.delete()
             return None
+
+        alerts = list(
+            Alert.objects.filter(report_run_id=report_run.id).order_by("created_at")
+        )
 
         org = Organization.objects.get(pk=organization_id)
 
@@ -136,13 +159,11 @@ class ReportService:
 
         except Exception:
             error_msg = traceback.format_exc()[-500:]
-            report_run = ReportRun.objects.create(
-                organization_id=organization_id,
-                alert_count=len(alerts),
-                triggered_by=triggered_by,
-                status=ReportRun.Status.FAILED,
-                error_message=error_msg,
-            )
+            # Release alert claims so they are picked up by the next report run.
+            Alert.objects.filter(report_run_id=report_run.id).update(report_run_id=None)
+            report_run.status = ReportRun.Status.FAILED
+            report_run.error_message = error_msg
+            report_run.save(update_fields=["status", "error_message"])
             AuditLog.objects.create(
                 organization_id=organization_id,
                 event_type="REPORT_GENERATED",
@@ -161,14 +182,11 @@ class ReportService:
             relative_path = str(pdf_path)
 
         with transaction.atomic():
-            Alert.objects.filter(pk__in=[a.pk for a in alerts]).update(reported=True)
-            report_run = ReportRun.objects.create(
-                organization_id=organization_id,
-                report_path=relative_path,
-                alert_count=len(alerts),
-                triggered_by=triggered_by,
-                status=ReportRun.Status.SUCCEEDED,
-            )
+            Alert.objects.filter(report_run_id=report_run.id).update(reported=True)
+            report_run.status = ReportRun.Status.SUCCEEDED
+            report_run.report_path = relative_path
+            report_run.alert_count = len(alerts)
+            report_run.save(update_fields=["status", "report_path", "alert_count"])
             AuditLog.objects.create(
                 organization_id=organization_id,
                 event_type="REPORT_GENERATED",
@@ -307,6 +325,16 @@ class ReportService:
         """Build a complete HTML document and convert it to PDF via xhtml2pdf."""
         from xhtml2pdf import pisa
 
+        # Sanitize owner-controlled and AI-generated content before interpolation.
+        safe_org_name = _html.escape(org_name)
+        safe_narrative = bleach.clean(
+            narrative_html,
+            tags=_NARRATIVE_ALLOWED_TAGS,
+            attributes=_NARRATIVE_ALLOWED_ATTRS,
+            strip=True,
+            strip_comments=True,
+        )
+
         severities = ["HIGH", "MEDIUM", "LOW"]
         statuses = ["OPEN", "ACKNOWLEDGED", "RESOLVED"]
 
@@ -404,7 +432,7 @@ class ReportService:
 <body>
   <h1>LedgerWatch</h1>
   <p class="subtitle">Weekly Financial Risk Report</p>
-  <p class="subtitle">Organization: {org_name}</p>
+  <p class="subtitle">Organization: {safe_org_name}</p>
   <p class="subtitle">Generated: {report_date.strftime('%A, %d %B %Y')}</p>
   <hr/>
   <h2>Alert Statistics</h2>
@@ -418,7 +446,7 @@ class ReportService:
     {stats_rows}
   </table>
   <hr/>
-  {narrative_html}
+  {safe_narrative}
 </body>
 </html>"""
 
