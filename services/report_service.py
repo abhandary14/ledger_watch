@@ -32,6 +32,7 @@ from uuid import UUID
 import anthropic
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
+from django.db import transaction
 
 from apps.alerts.models import Alert
 from apps.analytics.models import AnalysisRun
@@ -81,11 +82,36 @@ class ReportService:
             )
 
         # Run all four analyses; silently skip already-current types.
+        # If any run fails, abort and create a FAILED ReportRun immediately.
+        failed_types: list[str] = []
         for analysis_type in AnalyzerFactory.available():
             try:
-                AnalysisService.run_analysis(organization_id, analysis_type)
+                run = AnalysisService.run_analysis(organization_id, analysis_type)
             except AlreadyCurrentError:
-                pass
+                continue
+            if run.status == AnalysisRun.Status.FAILED:
+                failed_types.append(analysis_type)
+
+        if failed_types:
+            error_msg = f"Analysis failed for type(s): {', '.join(failed_types)}"
+            report_run = ReportRun.objects.create(
+                organization_id=organization_id,
+                alert_count=0,
+                triggered_by=triggered_by,
+                status=ReportRun.Status.FAILED,
+                error_message=error_msg,
+            )
+            AuditLog.objects.create(
+                organization_id=organization_id,
+                event_type="REPORT_GENERATED",
+                metadata={
+                    "report_run_id": str(report_run.id),
+                    "triggered_by": triggered_by,
+                    "status": ReportRun.Status.FAILED,
+                    "failed_analysis_types": failed_types,
+                },
+            )
+            raise RuntimeError(error_msg)
 
         alerts = list(
             Alert.objects.filter(
@@ -129,27 +155,31 @@ class ReportService:
             )
             raise
 
-        Alert.objects.filter(pk__in=[a.pk for a in alerts]).update(reported=True)
+        try:
+            relative_path = str(pdf_path.relative_to(Path(settings.BASE_DIR)))
+        except ValueError:
+            relative_path = str(pdf_path)
 
-        relative_path = str(pdf_path.relative_to(Path(settings.BASE_DIR)))
-        report_run = ReportRun.objects.create(
-            organization_id=organization_id,
-            report_path=relative_path,
-            alert_count=len(alerts),
-            triggered_by=triggered_by,
-            status=ReportRun.Status.SUCCEEDED,
-        )
-        AuditLog.objects.create(
-            organization_id=organization_id,
-            event_type="REPORT_GENERATED",
-            metadata={
-                "report_run_id": str(report_run.id),
-                "triggered_by": triggered_by,
-                "alert_count": len(alerts),
-                "report_path": relative_path,
-                "status": ReportRun.Status.SUCCEEDED,
-            },
-        )
+        with transaction.atomic():
+            Alert.objects.filter(pk__in=[a.pk for a in alerts]).update(reported=True)
+            report_run = ReportRun.objects.create(
+                organization_id=organization_id,
+                report_path=relative_path,
+                alert_count=len(alerts),
+                triggered_by=triggered_by,
+                status=ReportRun.Status.SUCCEEDED,
+            )
+            AuditLog.objects.create(
+                organization_id=organization_id,
+                event_type="REPORT_GENERATED",
+                metadata={
+                    "report_run_id": str(report_run.id),
+                    "triggered_by": triggered_by,
+                    "alert_count": len(alerts),
+                    "report_path": relative_path,
+                    "status": ReportRun.Status.SUCCEEDED,
+                },
+            )
 
         return report_run
 
@@ -208,14 +238,18 @@ class ReportService:
                 if alert_type == "large_transaction":
                     txs = rs.get("flagged_transactions", [])
                     if txs:
-                        finding["max_amount"] = max(tx.get("amount", 0) for tx in txs)
+                        finding["max_amount"] = max(float(tx.get("amount", 0)) for tx in txs)
                         finding["vendors"] = [tx.get("vendor", "") for tx in txs]
                 elif alert_type == "burn_rate":
-                    finding["runway_months"] = rs.get("runway_months")
-                    finding["net_burn"] = rs.get("net_monthly_burn", 0)
+                    runway = rs.get("runway_months")
+                    finding["runway_months"] = float(runway) if runway is not None else None
+                    finding["net_burn"] = float(rs.get("net_burn", rs.get("net_monthly_burn", 0)))
                 elif alert_type == "vendor_spike":
                     finding["vendors"] = [
-                        {"vendor": v["vendor"], "increase_pct": v.get("increase_pct")}
+                        {
+                            "vendor": v["vendor"],
+                            "percent_increase": float(v["increase_pct"]) if v.get("increase_pct") is not None else None,
+                        }
                         for v in rs.get("flagged_vendors", [])
                     ]
                 elif alert_type == "duplicate":
