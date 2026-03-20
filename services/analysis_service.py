@@ -90,10 +90,15 @@ class AnalysisService:
                     # status defaults to PENDING; results_summary/error_message are NULL.
                 )
         except IntegrityError:
-            # A concurrent caller already created a PENDING run for this
-            # (org, analysis_type) pair — treat it the same as AlreadyCurrentError
-            # so the report pipeline skips this type gracefully.
-            raise AlreadyCurrentError(analysis_type)
+            # Distinguish a uniqueness conflict on the partial PENDING index from
+            # any other integrity failure (FK violation, check constraint, etc.).
+            if AnalysisRun.objects.filter(
+                organization_id=organization_id,
+                analysis_type=analysis_type,
+                status=AnalysisRun.Status.PENDING,
+            ).exists():
+                raise AlreadyCurrentError(analysis_type)
+            raise
 
         try:
             results = analyzer.run(organization_id)
