@@ -13,7 +13,7 @@ Pipeline:
   9. Create ReportRun (SUCCEEDED) + REPORT_GENERATED AuditLog entry.
   10. Return ReportRun.
 
-On any exception in steps 5–7:
+On any exception in steps 5-7:
   - Create ReportRun (FAILED, error_message).
   - Re-raise so the caller (view or management command) can surface it.
   - reported flags are never set on failure.
@@ -60,10 +60,10 @@ _SYSTEM_PROMPT = (
     '{"html": "<your HTML here>"}\n\n'
     "The html value must be valid HTML body content (no <html>, <head>, or <body> tags) "
     "with inline CSS, containing these three sections in order:\n"
-    "1. Executive Summary — <h2>Executive Summary</h2> followed by 2–3 sentences in a <p> tag\n"
+    "1. Executive Summary — <h2>Executive Summary</h2> followed by 2-3 sentences in a <p> tag\n"
     "2. Key Findings — <h2>Key Findings</h2> then one <h3> + <p> per alert type that has alerts "
     "(skip types with zero alerts)\n"
-    "3. Recommendations — <h2>Recommendations</h2> followed by a <ul> with 3–5 <li> items\n\n"
+    "3. Recommendations — <h2>Recommendations</h2> followed by a <ul> with 3-5 <li> items\n\n"
     "Use only inline CSS. Write in plain language for a non-technical business owner.\n"
     "Do not invent data not present in the input. Do not make specific financial predictions.\n"
     "Return nothing outside the JSON object — no markdown fences, no preamble."
@@ -293,6 +293,10 @@ class ReportService:
             system=_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": user_message}],
         )
+        if not message.content or not hasattr(message.content[0], "text"):
+            raise ValueError(
+                f"Claude returned an empty or unexpected response shape: {message.content!r}"
+            )
         raw = message.content[0].text.strip()
         # Strip markdown code fences that Claude occasionally adds despite instructions.
         if raw.startswith("```"):
@@ -470,20 +474,21 @@ class ReportService:
         Called from both the Claude/PDF failure path and the success-commit
         failure path so cleanup is always consistent.
         """
-        Alert.objects.filter(report_run_id=report_run.id).update(report_run_id=None)
-        report_run.status = ReportRun.Status.FAILED
-        report_run.error_message = error_msg
-        report_run.save(update_fields=["status", "error_message"])
-        AuditLog.objects.create(
-            organization_id=organization_id,
-            event_type="REPORT_GENERATED",
-            metadata={
-                "report_run_id": str(report_run.id),
-                "triggered_by": triggered_by,
-                "alert_count": alert_count,
-                "status": ReportRun.Status.FAILED,
-            },
-        )
+        with transaction.atomic():
+            Alert.objects.filter(report_run_id=report_run.id).update(report_run_id=None)
+            report_run.status = ReportRun.Status.FAILED
+            report_run.error_message = error_msg
+            report_run.save(update_fields=["status", "error_message"])
+            AuditLog.objects.create(
+                organization_id=organization_id,
+                event_type="REPORT_GENERATED",
+                metadata={
+                    "report_run_id": str(report_run.id),
+                    "triggered_by": triggered_by,
+                    "alert_count": alert_count,
+                    "status": ReportRun.Status.FAILED,
+                },
+            )
 
     @staticmethod
     def _slugify(name: str) -> str:
