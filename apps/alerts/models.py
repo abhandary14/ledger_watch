@@ -63,6 +63,11 @@ class Alert(models.Model):
         auto_now_add=True,
         help_text="Timestamp when this alert record was created. Set automatically.",
     )
+    reported = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text="True once this alert has been included in a generated report",
+    )
 
     class Meta:
         ordering = ["-created_at"]

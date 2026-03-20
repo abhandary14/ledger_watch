@@ -4,7 +4,7 @@ import { useColumnResize } from '@/hooks/use-column-resize'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { ChevronLeft, ChevronRight, ArrowUp, ArrowDown } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ArrowUp, ArrowDown, FileText, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -26,6 +26,7 @@ import {
 } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
 import { getAlertsApi, acknowledgeAlertApi, resolveAlertApi, reopenAlertApi, deleteAlertApi, type Alert } from '@/api/alerts'
+import { generateReportApi, type ReportRun } from '@/api/reports'
 import { useAuth } from '@/hooks/use-auth'
 
 // ─── constants ───────────────────────────────────────────────────────────────
@@ -140,6 +141,7 @@ export function AlertsPage() {
   const { user } = useAuth()
   const canReopen = user?.role === 'owner' || user?.role === 'admin'
   const canDelete = user?.role === 'owner' || user?.role === 'admin'
+  const canGenerateReport = user?.role === 'owner' || user?.role === 'admin'
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [alertToDelete, setAlertToDelete] = useState<string | null>(null)
 
@@ -257,6 +259,28 @@ export function AlertsPage() {
       toast.success('Alert deleted')
     },
     onError: (err: unknown) => handleApiError(err, 'Failed to delete alert'),
+  })
+
+  const { mutate: generateReport, isPending: isGenerating } = useMutation({
+    mutationFn: () => generateReportApi().then((r) => r.data),
+    onSuccess: (data) => {
+      if ('report' in data && data.report === null) {
+        toast.info('No new alerts since last report — nothing to generate.')
+      } else {
+        const run = data as ReportRun
+        const filename = run.report_path.split('/').pop() ?? run.report_path
+        toast.success(`Report generated: ${filename}`)
+        queryClient.invalidateQueries({ queryKey: ['alerts'] })
+      }
+    },
+    onError: (err: unknown) => {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      if (detail?.includes('API key')) {
+        toast.error('Report generation is not configured. Contact your administrator.')
+      } else {
+        toast.error('Report generation failed. Please try again.')
+      }
+    },
   })
 
   async function acknowledgeAll() {
@@ -587,6 +611,26 @@ export function AlertsPage() {
         </div>
       )}
     </div>
+
+    {canGenerateReport && (
+      <button
+        className="fixed bottom-6 right-6 flex items-center gap-2 rounded-full bg-foreground px-5 py-3 text-sm font-medium text-background shadow-lg transition-opacity hover:opacity-90 disabled:opacity-50"
+        disabled={isGenerating}
+        onClick={() => generateReport()}
+      >
+        {isGenerating ? (
+          <>
+            <Loader2 className="size-4 animate-spin" />
+            Generating…
+          </>
+        ) : (
+          <>
+            <FileText className="size-4" />
+            Generate Report
+          </>
+        )}
+      </button>
+    )}
 
     <Dialog open={alertToDelete !== null} onOpenChange={(open) => { if (!open) setAlertToDelete(null) }}>
       <DialogContent showCloseButton={false}>
