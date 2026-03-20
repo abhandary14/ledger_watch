@@ -349,7 +349,8 @@ class TransferOwnershipView(APIView):
         new_email = f"owner@{new_owner_domain}"
 
         # Make sure new email isn't already taken by someone other than the current owner
-        if User.objects.filter(email=new_email).exclude(pk=request.user.pk).exists():
+        # or the new owner themselves (their email may already be owner@<domain>).
+        if User.objects.filter(email=new_email).exclude(pk=request.user.pk).exclude(pk=new_owner.pk).exists():
             return Response(
                 {"detail": f"Email {new_email} is already in use by another account."},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -371,12 +372,12 @@ class TransferOwnershipView(APIView):
                     },
                 )
 
-                # Free the old owner's email slot FIRST so the unique constraint is
-                # never violated when new_owner claims new_email (which may equal the
-                # old owner's current email when both share the same domain).
-                # Use an RFC 2606-reserved domain so the address passes email validators.
+                # Demote old owner and free their email slot FIRST so neither
+                # the unique_owner_per_org constraint nor the email unique
+                # constraint is violated when promoting the new owner.
                 old_owner.email = f"deleted-{old_owner.id}@example.invalid"
-                old_owner.save(update_fields=["email"])
+                old_owner.role = User.Role.ADMIN
+                old_owner.save(update_fields=["email", "role"])
 
                 # Promote new owner now that the email slot is free.
                 new_owner.email = new_email

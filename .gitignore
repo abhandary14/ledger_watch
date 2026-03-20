@@ -224,3 +224,4 @@ postman/
 /agent_team_instructions.json
 observations/
 /.claude/
+/transactions.csv
