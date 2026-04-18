@@ -8,15 +8,13 @@ from django.db.models import Q
 from django.db.models import functions as db_functions
 from django.utils import timezone
 
-from apps.organizations.models import Organization
-
-
 class Transaction(models.Model):
     """
     Represents a single financial transaction belonging to an Organization.
 
     Transactions are the core data ingested by LedgerWatch. They are analysed
     by the various Analyzer engines to surface risk signals and generate Alerts.
+    Tenant isolation is provided by the PostgreSQL schema — no organization FK.
 
     Design notes:
     - UUID primary key avoids enumerable IDs in the API.
@@ -32,12 +30,6 @@ class Transaction(models.Model):
         default=uuid.uuid4,
         editable=False,
         help_text="Unique identifier for this transaction (UUID v4, auto-generated).",
-    )
-    organization = models.ForeignKey(
-        Organization,
-        on_delete=models.PROTECT,
-        related_name="transactions",
-        help_text="The organization this transaction belongs to.",
     )
     date = models.DateField(
         db_index=True,
@@ -75,8 +67,8 @@ class Transaction(models.Model):
         verbose_name = "Transaction"
         verbose_name_plural = "Transactions"
         indexes = [
-            # Composite index used by VendorSpikeAnalyzer and monthly aggregations.
-            models.Index(fields=["organization", "date"], name="tx_org_date_idx"),
+            # Index used by VendorSpikeAnalyzer and monthly aggregations.
+            models.Index(fields=["date"], name="tx_date_idx"),
             # Composite index used by DuplicateTransactionAnalyzer.
             models.Index(fields=["vendor", "amount", "date"], name="tx_vendor_amount_date_idx"),
         ]
