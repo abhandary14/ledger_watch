@@ -5,7 +5,7 @@ Calling run_analysis() will:
   1. Create an AnalysisRun record with status=PENDING so in-progress runs
      are visible immediately.
   2. Instantiate the requested Analyzer via AnalyzerFactory.
-  3. Execute analyzer.run(organization_id).
+  3. Execute analyzer.run().
   4. On success  → mark the run SUCCEEDED, persist results_summary.
   5. On failure  → mark the run FAILED, store the exception message.
   6. On success  → call AlertService to generate Alert objects from results.
@@ -13,11 +13,10 @@ Calling run_analysis() will:
 
 The run status update is committed before alerts are generated so that a
 failure inside AlertService never reverts a SUCCEEDED run back to PENDING.
+Tenant isolation is provided by the active PostgreSQL schema on the connection.
 """
 
 from __future__ import annotations
-
-from uuid import UUID
 
 from django.db import IntegrityError, transaction
 
@@ -31,17 +30,12 @@ from services.exceptions import AlreadyCurrentError
 
 class AnalysisService:
     @staticmethod
-    def run_analysis(
-        organization_id: UUID | str,
-        analysis_type: str,
-    ) -> AnalysisRun:
+    def run_analysis(analysis_type: str) -> AnalysisRun:
         """
-        Execute a named analyzer for the given organization.
+        Execute a named analyzer against the current tenant schema.
 
         Parameters
         ----------
-        organization_id : UUID | str
-            PK of the Organization to analyse.
         analysis_type : str
             Must be a key registered in AnalyzerFactory (e.g. "large_transaction").
 
@@ -63,7 +57,7 @@ class AnalysisService:
         # Guard: skip re-analysis if no new transactions have been imported since
         # the last successful run of this type.
         latest_tx = (
-            Transaction.objects.filter(organization_id=organization_id)
+            Transaction.objects.all()
             .order_by("-created_at")
             .values("created_at")
             .first()
@@ -71,7 +65,6 @@ class AnalysisService:
         if latest_tx is not None:
             last_succeeded = (
                 AnalysisRun.objects.filter(
-                    organization_id=organization_id,
                     analysis_type=analysis_type,
                     status=AnalysisRun.Status.SUCCEEDED,
                 )
@@ -85,7 +78,6 @@ class AnalysisService:
         try:
             with transaction.atomic():
                 run = AnalysisRun.objects.create(
-                    organization_id=organization_id,
                     analysis_type=analysis_type,
                     # status defaults to PENDING; results_summary/error_message are NULL.
                 )
@@ -93,7 +85,6 @@ class AnalysisService:
             # Distinguish a uniqueness conflict on the partial PENDING index from
             # any other integrity failure (FK violation, check constraint, etc.).
             if AnalysisRun.objects.filter(
-                organization_id=organization_id,
                 analysis_type=analysis_type,
                 status=AnalysisRun.Status.PENDING,
             ).exists():
@@ -101,7 +92,7 @@ class AnalysisService:
             raise
 
         try:
-            results = analyzer.run(organization_id)
+            results = analyzer.run()
         except Exception as exc:  # noqa: BLE001
             # Only store the exception message — avoid persisting potentially
             # sensitive frames (file paths, local variables) in the AuditLog.
@@ -114,7 +105,6 @@ class AnalysisService:
                 run.save(update_fields=["status", "error_message"])
 
                 AuditLog.objects.create(
-                    organization_id=organization_id,
                     event_type="ANALYSIS_RUN",
                     metadata={
                         "run_id": str(run.id),
@@ -144,7 +134,6 @@ class AnalysisService:
                 run.error_message = error_message
                 run.save(update_fields=["status", "error_message"])
                 AuditLog.objects.create(
-                    organization_id=organization_id,
                     event_type="ANALYSIS_RUN",
                     metadata={
                         "run_id": str(run.id),
@@ -156,7 +145,7 @@ class AnalysisService:
             raise
 
         try:
-            alerts_created = AlertService.generate_alerts(organization_id, analysis_type, results)
+            alerts_created = AlertService.generate_alerts(analysis_type, results)
             alert_error = None
         except Exception as exc:  # noqa: BLE001
             alerts_created = []
@@ -172,7 +161,6 @@ class AnalysisService:
             if alert_error is not None:
                 metadata["alert_failure"] = alert_error
             AuditLog.objects.create(
-                organization_id=organization_id,
                 event_type="ANALYSIS_RUN",
                 metadata=metadata,
             )

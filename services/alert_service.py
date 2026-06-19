@@ -4,6 +4,7 @@ AlertService — interprets raw analyzer results and creates Alert objects.
 Called by AnalysisService after every successful analyzer run.  Each
 analyzer produces a structured results dict; AlertService maps those
 structures to Alert severity levels and persists the records.
+Tenant isolation is provided by the active PostgreSQL schema on the connection.
 
 Severity mapping (from plan.md §6):
     Analyzer            │ Condition                        │ Severity
@@ -21,8 +22,6 @@ Severity mapping (from plan.md §6):
 
 from __future__ import annotations
 
-from uuid import UUID
-
 from apps.alerts.models import Alert
 from apps.audit.models import AuditLog
 
@@ -37,7 +36,6 @@ class AlertService:
     @classmethod
     def generate_alerts(
         cls,
-        organization_id: UUID | str,
         analysis_type: str,
         results: dict,
     ) -> list[Alert]:
@@ -61,8 +59,8 @@ class AlertService:
             # succeeds even if a custom analyzer hasn't registered a handler.
             return []
 
-        alerts = handler(organization_id, results)
-        cls._audit_alerts(organization_id, alerts)
+        alerts = handler(results)
+        cls._audit_alerts(alerts)
         return alerts
 
     # ------------------------------------------------------------------
@@ -70,9 +68,7 @@ class AlertService:
     # ------------------------------------------------------------------
 
     @classmethod
-    def _alerts_for_large_transaction(
-        cls, organization_id: UUID | str, results: dict
-    ) -> list[Alert]:
+    def _alerts_for_large_transaction(cls, results: dict) -> list[Alert]:
         """
         Create one Alert per flagged transaction.
 
@@ -100,7 +96,6 @@ class AlertService:
             )
             alerts.append(
                 Alert.objects.create(
-                    organization_id=organization_id,
                     alert_type="large_transaction",
                     severity=severity,
                     message=message,
@@ -109,9 +104,7 @@ class AlertService:
         return alerts
 
     @classmethod
-    def _alerts_for_burn_rate(
-        cls, organization_id: UUID | str, results: dict
-    ) -> list[Alert]:
+    def _alerts_for_burn_rate(cls, results: dict) -> list[Alert]:
         """
         Create at most one Alert summarising the organisation's burn health.
 
@@ -144,7 +137,6 @@ class AlertService:
         )
         return [
             Alert.objects.create(
-                organization_id=organization_id,
                 alert_type="burn_rate",
                 severity=severity,
                 message=message,
@@ -152,9 +144,7 @@ class AlertService:
         ]
 
     @classmethod
-    def _alerts_for_vendor_spike(
-        cls, organization_id: UUID | str, results: dict
-    ) -> list[Alert]:
+    def _alerts_for_vendor_spike(cls, results: dict) -> list[Alert]:
         """
         Create one Alert per flagged vendor.
 
@@ -196,7 +186,6 @@ class AlertService:
 
             alerts.append(
                 Alert.objects.create(
-                    organization_id=organization_id,
                     alert_type="vendor_spike",
                     severity=severity,
                     message=message,
@@ -205,9 +194,7 @@ class AlertService:
         return alerts
 
     @classmethod
-    def _alerts_for_duplicate(
-        cls, organization_id: UUID | str, results: dict
-    ) -> list[Alert]:
+    def _alerts_for_duplicate(cls, results: dict) -> list[Alert]:
         """
         Create one LOW-severity Alert per duplicate group detected.
         """
@@ -229,7 +216,6 @@ class AlertService:
             )
             alerts.append(
                 Alert.objects.create(
-                    organization_id=organization_id,
                     alert_type="duplicate",
                     severity=Alert.Severity.LOW,
                     message=message,
@@ -242,14 +228,11 @@ class AlertService:
     # ------------------------------------------------------------------
 
     @classmethod
-    def _audit_alerts(
-        cls, organization_id: UUID | str, alerts: list[Alert]
-    ) -> None:
+    def _audit_alerts(cls, alerts: list[Alert]) -> None:
         """Write one AuditLog entry summarising all alerts raised in a batch."""
         if not alerts:
             return
         AuditLog.objects.create(
-            organization_id=organization_id,
             event_type="ALERTS_GENERATED",
             metadata={
                 "alert_count": len(alerts),

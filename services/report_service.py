@@ -3,7 +3,7 @@ ReportService — orchestrates the AI-assisted weekly report pipeline.
 
 Pipeline:
   1. Run all four analysis types (skips types already current via AlreadyCurrentError).
-  2. Fetch unreported alerts for the org.
+  2. Fetch unreported alerts for the current tenant.
   3. If none → return None (caller receives "no new alerts").
   4. Build compact JSON payload for Claude.
   5. Call Claude API → receive HTML narrative as JSON.
@@ -17,6 +17,10 @@ On any exception in steps 5-7:
   - Create ReportRun (FAILED, error_message).
   - Re-raise so the caller (view or management command) can surface it.
   - reported flags are never set on failure.
+
+Tenant isolation is provided by the active PostgreSQL schema on the connection.
+The current org is read from connection.tenant (set by JWTTenantMiddleware /
+TenantViewMixin before any service call).
 """
 
 from __future__ import annotations
@@ -25,11 +29,9 @@ import html as _html
 import json
 import logging
 import re
-import traceback
 from collections import defaultdict
 from datetime import date
 from pathlib import Path
-from uuid import UUID
 
 _logger = logging.getLogger(__name__)
 
@@ -38,12 +40,11 @@ import bleach
 import anthropic
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
-from django.db import transaction
+from django.db import connection, transaction
 
 from apps.alerts.models import Alert
 from apps.analytics.models import AnalysisRun
 from apps.audit.models import AuditLog
-from apps.organizations.models import Organization
 from apps.reports.models import ReportRun
 from factories.analyzer_factory import AnalyzerFactory
 from services.analysis_service import AnalysisService
@@ -72,12 +73,9 @@ _SYSTEM_PROMPT = (
 
 class ReportService:
     @staticmethod
-    def generate_report(
-        organization_id: UUID | str,
-        triggered_by: str = "manual",
-    ) -> ReportRun | None:
+    def generate_report(triggered_by: str = "manual") -> ReportRun | None:
         """
-        Generate a PDF financial risk report for the given organization.
+        Generate a PDF financial risk report for the current tenant.
 
         Returns the created ReportRun on success, or None if there are no
         unreported alerts (no report generated, no ReportRun created).
@@ -91,12 +89,14 @@ class ReportService:
                 "Set it in config/.env before generating reports."
             )
 
+        org = connection.tenant
+
         # Run all four analyses; silently skip already-current types.
         # If any run fails, abort and create a FAILED ReportRun immediately.
         failed_types: list[str] = []
         for analysis_type in AnalyzerFactory.available():
             try:
-                run = AnalysisService.run_analysis(organization_id, analysis_type)
+                run = AnalysisService.run_analysis(analysis_type)
             except AlreadyCurrentError:
                 continue
             if run.status == AnalysisRun.Status.FAILED:
@@ -105,14 +105,12 @@ class ReportService:
         if failed_types:
             error_msg = f"Analysis failed for type(s): {', '.join(failed_types)}"
             report_run = ReportRun.objects.create(
-                organization_id=organization_id,
                 alert_count=0,
                 triggered_by=triggered_by,
                 status=ReportRun.Status.FAILED,
                 error_message=error_msg,
             )
             AuditLog.objects.create(
-                organization_id=organization_id,
                 event_type="REPORT_GENERATED",
                 metadata={
                     "report_run_id": str(report_run.id),
@@ -126,7 +124,6 @@ class ReportService:
         # Create a PENDING ReportRun immediately to serve as a durable claim token.
         # This record is updated in-place to SUCCEEDED or FAILED; it is never left PENDING.
         report_run = ReportRun.objects.create(
-            organization_id=organization_id,
             triggered_by=triggered_by,
             status=ReportRun.Status.PENDING,
         )
@@ -136,7 +133,6 @@ class ReportService:
         # exactly one ReportRun even under concurrent calls.
         with transaction.atomic():
             claimed_count = Alert.objects.filter(
-                organization_id=organization_id,
                 reported=False,
                 report_run__isnull=True,
             ).update(report_run_id=report_run.id)
@@ -149,10 +145,8 @@ class ReportService:
             Alert.objects.filter(report_run_id=report_run.id).order_by("created_at")
         )
 
-        org = Organization.objects.get(pk=organization_id)
-
         try:
-            payload = ReportService._build_payload(org, alerts, organization_id)
+            payload = ReportService._build_payload(org, alerts)
             narrative_html = ReportService._call_claude(payload)
 
             output_dir = Path(settings.REPORT_OUTPUT_DIR)
@@ -162,8 +156,8 @@ class ReportService:
 
         except Exception as e:
             error_msg = f"{type(e).__name__}: {e}"
-            _logger.exception("Report generation failed for org %s run %s", organization_id, report_run.id)
-            ReportService._fail_run(report_run, organization_id, triggered_by, len(alerts), error_msg)
+            _logger.exception("Report generation failed for org %s run %s", org.name, report_run.id)
+            ReportService._fail_run(report_run, triggered_by, len(alerts), error_msg)
             raise
 
         try:
@@ -179,7 +173,6 @@ class ReportService:
                 report_run.alert_count = len(alerts)
                 report_run.save(update_fields=["status", "report_path", "alert_count"])
                 AuditLog.objects.create(
-                    organization_id=organization_id,
                     event_type="REPORT_GENERATED",
                     metadata={
                         "report_run_id": str(report_run.id),
@@ -191,8 +184,8 @@ class ReportService:
                 )
         except Exception as e:
             error_msg = f"{type(e).__name__}: {e}"
-            _logger.exception("Failed to commit report run %s for org %s", report_run.id, organization_id)
-            ReportService._fail_run(report_run, organization_id, triggered_by, len(alerts), error_msg)
+            _logger.exception("Failed to commit report run %s for org %s", report_run.id, org.name)
+            ReportService._fail_run(report_run, triggered_by, len(alerts), error_msg)
             raise
 
         return report_run
@@ -202,7 +195,7 @@ class ReportService:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _build_payload(org: Organization, alerts: list, organization_id) -> dict:
+    def _build_payload(org, alerts: list) -> dict:
         """Build the compact JSON summary sent to Claude."""
         by_severity: dict[str, int] = defaultdict(int)
         by_type: dict[str, int] = defaultdict(int)
@@ -225,11 +218,11 @@ class ReportService:
                 "by_type": dict(by_type),
                 "by_status": dict(by_status),
             },
-            "findings": ReportService._build_findings(organization_id, dict(by_type)),
+            "findings": ReportService._build_findings(dict(by_type)),
         }
 
     @staticmethod
-    def _build_findings(organization_id, type_counts: dict) -> dict:
+    def _build_findings(type_counts: dict) -> dict:
         """
         Extract structured findings per alert type from the most recent
         SUCCEEDED AnalysisRun results_summary for each type.
@@ -240,7 +233,6 @@ class ReportService:
 
             run = (
                 AnalysisRun.objects.filter(
-                    organization_id=organization_id,
                     analysis_type=alert_type,
                     status=AnalysisRun.Status.SUCCEEDED,
                 )
@@ -460,7 +452,6 @@ class ReportService:
     @staticmethod
     def _fail_run(
         report_run: ReportRun,
-        organization_id,
         triggered_by: str,
         alert_count: int,
         error_msg: str,
@@ -477,7 +468,6 @@ class ReportService:
             report_run.error_message = error_msg
             report_run.save(update_fields=["status", "error_message"])
             AuditLog.objects.create(
-                organization_id=organization_id,
                 event_type="REPORT_GENERATED",
                 metadata={
                     "report_run_id": str(report_run.id),
