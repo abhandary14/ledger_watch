@@ -20,10 +20,11 @@ from apps.transactions.filters import TransactionFilter
 from apps.transactions.models import Transaction
 from apps.transactions.serializers import TransactionImportSerializer, TransactionSerializer
 from apps.users.permissions import IsAdminOrOwner
+from ledgerwatch.tenant_mixin import TenantViewMixin
 from services.transaction_service import DuplicateImportError, TransactionService
 
 
-class TransactionImportView(APIView):
+class TransactionImportView(TenantViewMixin, APIView):
     """
     POST /api/v1/transactions/import
 
@@ -58,11 +59,10 @@ class TransactionImportView(APIView):
         serializer = TransactionImportSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        org_id = request.user.organization_id
         tx_data = serializer.validated_data["transactions"]
 
         try:
-            result = TransactionService.bulk_import(str(org_id), tx_data)
+            result = TransactionService.bulk_import(tx_data)
         except DuplicateImportError as e:
             return Response(
                 {"detail": str(e)},
@@ -92,7 +92,7 @@ class TransactionImportView(APIView):
         ],
     )
 )
-class TransactionListView(ListAPIView):
+class TransactionListView(TenantViewMixin, ListAPIView):
     """
     GET /api/v1/transactions/
 
@@ -110,9 +110,7 @@ class TransactionListView(ListAPIView):
     ordering = ['-date', '-created_at']
 
     def get_queryset(self):
-        return Transaction.objects.select_related("organization").filter(
-            organization_id=self.request.user.organization_id
-        ).order_by('-date', '-created_at')
+        return Transaction.objects.order_by('-date', '-created_at')
 
 
 @extend_schema(
@@ -129,7 +127,7 @@ class TransactionListView(ListAPIView):
         )
     },
 )
-class TransactionFilterOptionsView(APIView):
+class TransactionFilterOptionsView(TenantViewMixin, APIView):
     """
     GET /api/v1/transactions/filter-options/
 
@@ -140,8 +138,7 @@ class TransactionFilterOptionsView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        org_id = request.user.organization_id
-        qs = Transaction.objects.filter(organization_id=org_id).order_by()
+        qs = Transaction.objects.order_by()
         vendors = sorted(qs.values_list("vendor", flat=True).distinct())
         categories = sorted(
             v for v in qs.values_list("category", flat=True).distinct() if v
@@ -160,7 +157,7 @@ class TransactionFilterOptionsView(APIView):
         },
     )
 )
-class TransactionDetailView(RetrieveAPIView):
+class TransactionDetailView(TenantViewMixin, RetrieveAPIView):
     """
     GET /api/v1/transactions/{id}/
 
@@ -169,14 +166,10 @@ class TransactionDetailView(RetrieveAPIView):
 
     permission_classes = [IsAuthenticated]
     serializer_class = TransactionSerializer
-
-    def get_queryset(self):
-        return Transaction.objects.select_related("organization").filter(
-            organization_id=self.request.user.organization_id
-        )
+    queryset = Transaction.objects.all()
 
 
-class TransactionDeleteView(APIView):
+class TransactionDeleteView(TenantViewMixin, APIView):
     """
     DELETE /api/v1/transactions/<uuid>/
 
@@ -196,14 +189,11 @@ class TransactionDeleteView(APIView):
     def delete(self, request, pk):
         with db_transaction.atomic():
             transaction = get_object_or_404(
-                Transaction.objects.filter(
-                    organization_id=request.user.organization_id
-                ).select_for_update(),
+                Transaction.objects.select_for_update(),
                 pk=pk,
             )
 
             AuditLog.objects.create(
-                organization_id=transaction.organization_id,
                 event_type="TRANSACTION_DELETED",
                 metadata={
                     "transaction_id": str(transaction.id),

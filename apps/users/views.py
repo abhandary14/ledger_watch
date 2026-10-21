@@ -5,6 +5,7 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import PermissionDenied
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError, transaction as db_transaction
+from django_tenants.utils import tenant_context
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
@@ -66,11 +67,12 @@ class RegisterView(APIView):
                     organization=org,
                     role=role,
                 )
-                AuditLog.objects.create(
-                    organization=org,
-                    event_type="USER_REGISTERED",
-                    metadata={"user_id": str(user.id)},
-                )
+                # AuditLog lives in the new org's schema; this view runs on public.
+                with tenant_context(org):
+                    AuditLog.objects.create(
+                        event_type="USER_REGISTERED",
+                        metadata={"user_id": str(user.id)},
+                    )
         except IntegrityError:
             if User.objects.filter(email=email).exists():
                 return Response(

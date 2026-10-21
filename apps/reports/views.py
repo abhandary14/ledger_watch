@@ -9,10 +9,11 @@ from rest_framework.views import APIView
 
 from apps.reports.serializers import ReportRunSerializer
 from apps.users.permissions import IsOwner
+from ledgerwatch.tenant_mixin import TenantViewMixin
 from services.report_service import ReportService
 
 
-class GenerateReportView(APIView):
+class GenerateReportView(TenantViewMixin, APIView):
     """
     POST /api/v1/reports/generate
 
@@ -39,12 +40,8 @@ class GenerateReportView(APIView):
         },
     )
     def post(self, request: Request) -> Response:
-        org_id = request.user.organization_id
         try:
-            report_run = ReportService.generate_report(
-                organization_id=org_id,
-                triggered_by="manual",
-            )
+            report_run = ReportService.generate_report(triggered_by="manual")
         except ImproperlyConfigured:
             return Response(
                 {"detail": "Claude API key not configured."},
