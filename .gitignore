@@ -225,3 +225,5 @@ postman/
 observations/
 /.claude/
 /transactions.csv
+/graphify-out/
+diagram.md
