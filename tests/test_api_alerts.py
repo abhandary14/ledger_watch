@@ -1,6 +1,8 @@
 import pytest
 import uuid
 
+from django_tenants.utils import tenant_context
+
 from apps.alerts.models import Alert
 
 
@@ -10,7 +12,6 @@ ALERTS_URL = "/api/v1/alerts/"
 @pytest.fixture
 def open_alert(org):
     return Alert.objects.create(
-        organization=org,
         alert_type="large_transaction",
         severity=Alert.Severity.HIGH,
         message="Test alert",
@@ -36,25 +37,26 @@ class TestAlertListAPI:
         assert str(open_alert.id) in alert_ids
 
     def test_only_returns_own_org_alerts(self, auth_client, user2, org2, open_alert):
-        Alert.objects.create(
-            organization=org2,
-            alert_type="burn_rate",
-            severity=Alert.Severity.LOW,
-            message="Org2 alert",
-        )
+        with tenant_context(org2):
+            Alert.objects.create(
+                alert_type="burn_rate",
+                severity=Alert.Severity.LOW,
+                message="Org2 alert",
+            )
         response = auth_client.get(ALERTS_URL)
         assert response.status_code == 200
         results = response.data.get("results", response.data)
-        for alert in results:
-            assert alert["message"] != "Org2 alert"
+        messages = [alert["message"] for alert in results]
+        assert "Test alert" in messages
+        assert "Org2 alert" not in messages
 
     def test_filter_by_severity(self, auth_client, org):
         Alert.objects.create(
-            organization=org, alert_type="large_transaction",
+            alert_type="large_transaction",
             severity=Alert.Severity.HIGH, message="High alert"
         )
         Alert.objects.create(
-            organization=org, alert_type="duplicate",
+            alert_type="duplicate",
             severity=Alert.Severity.LOW, message="Low alert"
         )
         response = auth_client.get(ALERTS_URL, {"severity": "HIGH"})
@@ -65,7 +67,6 @@ class TestAlertListAPI:
 
     def test_filter_by_status(self, auth_client, org, open_alert):
         Alert.objects.create(
-            organization=org,
             alert_type="burn_rate",
             severity=Alert.Severity.MEDIUM,
             message="Resolved alert",
@@ -120,7 +121,6 @@ class TestAlertAcknowledgeAPI:
 
     def test_acknowledge_already_acknowledged_returns_409(self, auth_client, org):
         alert = Alert.objects.create(
-            organization=org,
             alert_type="duplicate",
             severity=Alert.Severity.LOW,
             message="Already acked",
@@ -156,7 +156,6 @@ class TestAlertResolveAPI:
 
     def test_resolve_acknowledged_alert_returns_200(self, auth_client, org):
         alert = Alert.objects.create(
-            organization=org,
             alert_type="vendor_spike",
             severity=Alert.Severity.MEDIUM,
             message="Acked alert",
@@ -170,7 +169,6 @@ class TestAlertResolveAPI:
 
     def test_resolve_already_resolved_returns_409(self, auth_client, org):
         alert = Alert.objects.create(
-            organization=org,
             alert_type="burn_rate",
             severity=Alert.Severity.HIGH,
             message="Already resolved",
@@ -194,7 +192,6 @@ class TestAlertResolveAPI:
 @pytest.fixture
 def resolved_alert(org):
     return Alert.objects.create(
-        organization=org,
         alert_type="burn_rate",
         severity=Alert.Severity.HIGH,
         message="Resolved test alert",
@@ -249,7 +246,6 @@ class TestAlertReopenAPI:
 
     def test_reopen_acknowledged_alert_returns_409(self, auth_client, org):
         alert = Alert.objects.create(
-            organization=org,
             alert_type="duplicate",
             severity=Alert.Severity.LOW,
             message="Acked alert",
@@ -270,7 +266,6 @@ class TestAlertReopenAPI:
         url = f"/api/v1/alerts/{resolved_alert.id}/reopen"
         auth_client.post(url, format="json")
         assert AuditLog.objects.filter(
-            organization=resolved_alert.organization,
             event_type="ALERT_REOPENED",
             metadata__alert_id=str(resolved_alert.id),
         ).exists()

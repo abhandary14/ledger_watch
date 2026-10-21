@@ -151,10 +151,7 @@ class TestOrgMemberCreateAPI:
             "role": "employee",
         }
         auth_client.post(MEMBERS_URL, payload, format="json")
-        assert AuditLog.objects.filter(
-            organization=org,
-            event_type="USER_REGISTERED",
-        ).exists()
+        assert AuditLog.objects.filter(event_type="USER_REGISTERED").exists()
 
 
 @pytest.mark.django_db
