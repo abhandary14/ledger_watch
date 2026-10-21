@@ -9,8 +9,6 @@ Logic:
   as new vendors with infinite growth.
 """
 
-from uuid import UUID
-
 from django.db.models import Sum
 from django.db.models.functions import TruncMonth
 
@@ -21,8 +19,8 @@ SPIKE_THRESHOLD = 0.25  # 25%
 
 
 class VendorSpikeAnalyzer(Analyzer):
-    def run(self, organization_id: UUID | str) -> dict:
-        txs = Transaction.objects.filter(organization_id=organization_id)
+    def run(self) -> dict:
+        txs = Transaction.objects.all()
 
         monthly = (
             txs.annotate(month=TruncMonth("date"))

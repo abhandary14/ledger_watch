@@ -4,9 +4,6 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import Q
 
-from apps.organizations.models import Organization
-
-
 class AnalysisRun(models.Model):
     """
     Audit record for a single execution of an Analyzer against an Organization.
@@ -40,12 +37,6 @@ class AnalysisRun(models.Model):
         default=uuid.uuid4,
         editable=False,
         help_text="Unique identifier for this analysis run (UUID v4, auto-generated).",
-    )
-    organization = models.ForeignKey(
-        Organization,
-        on_delete=models.PROTECT,
-        related_name="analysis_runs",
-        help_text="The organization this analysis was run against.",
     )
     analysis_type = models.CharField(
         max_length=100,
@@ -91,9 +82,9 @@ class AnalysisRun(models.Model):
             # create a PENDING run.  SUCCEEDED/FAILED rows are unrestricted so
             # history is preserved.
             models.UniqueConstraint(
-                fields=["organization", "analysis_type"],
+                fields=["analysis_type"],
                 condition=Q(status="PENDING"),
-                name="analysisrun_one_pending_per_org_type",
+                name="analysisrun_one_pending_per_type",
             ),
             # PENDING: no results, no error.
             models.CheckConstraint(
@@ -168,4 +159,4 @@ class AnalysisRun(models.Model):
     def __str__(self) -> str:
         # run_time is auto_now_add so it is None on unsaved instances.
         ts = self.run_time.strftime("%Y-%m-%d %H:%M") if self.run_time else "unsaved"
-        return f"{self.analysis_type} [{self.status}] @ {ts} (org={self.organization_id})"
+        return f"{self.analysis_type} [{self.status}] @ {ts}"

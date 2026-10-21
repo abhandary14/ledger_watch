@@ -8,7 +8,6 @@ Logic:
 """
 
 from datetime import timedelta
-from uuid import UUID
 
 from apps.transactions.models import Transaction
 from services.analyzers.base import Analyzer
@@ -17,9 +16,9 @@ WINDOW_HOURS = 48
 
 
 class DuplicateTransactionAnalyzer(Analyzer):
-    def run(self, organization_id: UUID | str) -> dict:
+    def run(self) -> dict:
         txs = list(
-            Transaction.objects.filter(organization_id=organization_id)
+            Transaction.objects.all()
             .values("id", "vendor", "amount", "date", "created_at")
             .order_by("vendor", "amount", "created_at")
         )

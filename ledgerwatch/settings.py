@@ -29,22 +29,26 @@ ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
 # ---------------------------------------------------------------------------
 # Application definition
 # ---------------------------------------------------------------------------
-INSTALLED_APPS = [
+SHARED_APPS = [
+    "django_tenants",
+    "apps.organizations",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-    # Third-party
+    # Third-party shared
     "rest_framework",
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",
     "django_filters",
     "drf_spectacular",
-    # Local apps
+    # Local shared
     "apps.users",
-    "apps.organizations",
+]
+
+TENANT_APPS = [
     "apps.transactions",
     "apps.analytics",
     "apps.alerts",
@@ -52,9 +56,17 @@ INSTALLED_APPS = [
     "apps.reports",
 ]
 
+INSTALLED_APPS = list(SHARED_APPS) + [
+    app for app in TENANT_APPS if app not in SHARED_APPS
+]
+
+TENANT_MODEL = "organizations.Organization"
+TENANT_DOMAIN_MODEL = "organizations.Domain"
+
 AUTH_USER_MODEL = "users.User"
 
 MIDDLEWARE = [
+    "ledgerwatch.middleware.JWTTenantMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -88,7 +100,7 @@ WSGI_APPLICATION = "ledgerwatch.wsgi.application"
 # ---------------------------------------------------------------------------
 DATABASES = {
     "default": {
-        "ENGINE": "django.db.backends.postgresql",
+        "ENGINE": "django_tenants.postgresql_backend",
         "NAME": os.getenv("DB_NAME", "ledgerwatch"),
         "USER": os.getenv("DB_USER", "ledger"),
         "PASSWORD": os.getenv("DB_PASSWORD", "ledger"),
@@ -96,6 +108,8 @@ DATABASES = {
         "PORT": os.getenv("DB_PORT", "5432"),
     }
 }
+
+DATABASE_ROUTERS = ["django_tenants.routers.TenantSyncRouter"]
 
 # ---------------------------------------------------------------------------
 # Password validation

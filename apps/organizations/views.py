@@ -12,6 +12,7 @@ from apps.organizations.models import Organization, SecurityChallenge
 from apps.users.models import User
 from apps.users.permissions import IsOwner
 from apps.users.serializers import CreateMemberSerializer, OrgMemberSerializer, UpdateMemberRoleSerializer
+from ledgerwatch.tenant_mixin import TenantViewMixin
 
 
 
@@ -124,7 +125,7 @@ class OrganizationDetailView(APIView):
         )
 
 
-class OrgMemberListCreateView(APIView):
+class OrgMemberListCreateView(TenantViewMixin, APIView):
     """
     GET  /api/v1/organizations/members/ — list all members of the owner's org
     POST /api/v1/organizations/members/ — create a new member (admin or employee)
@@ -173,7 +174,6 @@ class OrgMemberListCreateView(APIView):
                     last_name=serializer.validated_data.get("last_name", ""),
                 )
                 AuditLog.objects.create(
-                    organization_id=request.user.organization_id,
                     event_type="USER_REGISTERED",
                     metadata={
                         "user_id": str(member.id),
@@ -190,7 +190,7 @@ class OrgMemberListCreateView(APIView):
         return Response(OrgMemberSerializer(member).data, status=status.HTTP_201_CREATED)
 
 
-class OrgMemberDetailView(APIView):
+class OrgMemberDetailView(TenantViewMixin, APIView):
     """
     PATCH /api/v1/organizations/members/<uuid>/ — change a member's role (admin ↔ employee)
     DELETE /api/v1/organizations/members/<uuid>/ — remove a member from the org
@@ -234,7 +234,6 @@ class OrgMemberDetailView(APIView):
             member.save(update_fields=["role"])
 
             AuditLog.objects.create(
-                organization_id=request.user.organization_id,
                 event_type="MEMBER_ROLE_UPDATED",
                 metadata={
                     "member_id": str(member.id),
@@ -278,7 +277,6 @@ class OrgMemberDetailView(APIView):
 
         with db_transaction.atomic():
             AuditLog.objects.create(
-                organization_id=request.user.organization_id,
                 event_type="MEMBER_REMOVED",
                 metadata={
                     "member_id": str(member.id),
@@ -291,7 +289,7 @@ class OrgMemberDetailView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-class TransferOwnershipView(APIView):
+class TransferOwnershipView(TenantViewMixin, APIView):
     """
     POST /api/v1/organizations/transfer-ownership/
 
@@ -362,7 +360,6 @@ class TransferOwnershipView(APIView):
             with db_transaction.atomic():
                 # Write audit log BEFORE mutating either row so real emails are captured.
                 AuditLog.objects.create(
-                    organization_id=old_owner.organization_id,
                     event_type="OWNERSHIP_TRANSFERRED",
                     metadata={
                         "old_owner_id": str(old_owner.id),

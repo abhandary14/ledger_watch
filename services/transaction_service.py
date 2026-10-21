@@ -2,9 +2,8 @@
 TransactionService — business logic for ingesting transactions.
 
 All DB writes and audit logging live here; views stay thin.
+Tenant isolation is provided by the active PostgreSQL schema on the connection.
 """
-
-from uuid import UUID
 
 from django.db import transaction
 from django.db.models import Q
@@ -21,9 +20,9 @@ class DuplicateImportError(Exception):
 
 class TransactionService:
     @staticmethod
-    def bulk_import(org_id: UUID | str, data: list[dict]) -> dict:
+    def bulk_import(data: list[dict]) -> dict:
         """
-        Persist a list of validated transaction dicts for the given org,
+        Persist a list of validated transaction dicts for the current tenant,
         skipping rows that already exist (same date, vendor, amount).
 
         Each dict must already be validated (e.g. via TransactionSerializer).
@@ -40,9 +39,7 @@ class TransactionService:
             duplicate_q |= Q(date=item["date"], vendor=item["vendor"], amount=item["amount"])
 
         existing = set(
-            Transaction.objects.filter(
-                Q(organization_id=org_id) & duplicate_q
-            ).values_list("date", "vendor", "amount")
+            Transaction.objects.filter(duplicate_q).values_list("date", "vendor", "amount")
         )
 
         new_data = [
@@ -58,16 +55,12 @@ class TransactionService:
             )
 
         with transaction.atomic():
-            instances = [
-                Transaction(organization_id=org_id, **item)
-                for item in new_data
-            ]
+            instances = [Transaction(**item) for item in new_data]
             for instance in instances:
                 instance.full_clean()
             created = Transaction.objects.bulk_create(instances)
 
             AuditLog.objects.create(
-                organization_id=org_id,
                 event_type="TRANSACTION_IMPORTED",
                 metadata={"count": len(created), "skipped_duplicates": skipped},
             )

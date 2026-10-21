@@ -9,8 +9,6 @@ Logic:
   If net burn <= 0, the org is cash-flow positive (runway reported as None).
 """
 
-from uuid import UUID
-
 from django.db.models import Sum
 from django.db.models.functions import TruncMonth
 
@@ -21,8 +19,8 @@ from services.analyzers.base import Analyzer
 class BurnRateAnalyzer(Analyzer):
     REVENUE_CATEGORY = "Revenue"
 
-    def run(self, organization_id: UUID | str) -> dict:
-        txs = Transaction.objects.filter(organization_id=organization_id)
+    def run(self) -> dict:
+        txs = Transaction.objects.all()
 
         # Aggregate expenses and revenue per calendar month
         expense_by_month = (

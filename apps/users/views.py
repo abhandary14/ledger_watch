@@ -1,8 +1,11 @@
+import uuid
+
 from django.contrib.auth import authenticate
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import PermissionDenied
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError, transaction as db_transaction
+from django_tenants.utils import tenant_context
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
@@ -14,7 +17,7 @@ from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, Ou
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.audit.models import AuditLog
-from apps.organizations.models import Organization
+from apps.organizations.models import Domain, Organization
 from apps.users.models import User
 from apps.users.serializers import LoginSerializer, LogoutSerializer, RegisterSerializer, UserMeSerializer
 
@@ -50,18 +53,26 @@ class RegisterView(APIView):
 
         try:
             with db_transaction.atomic():
-                org = Organization.objects.create(name=org_name)
+                schema_name = f"tenant_{uuid.uuid4().hex[:12]}"
+                org = Organization(name=org_name, schema_name=schema_name)
+                org.save()  # auto_create_schema=True creates the PG schema + runs tenant migrations
+                Domain.objects.create(
+                    domain=f"{org.id}.ledgerwatch.local",
+                    tenant=org,
+                    is_primary=True,
+                )
                 user = User.objects.create_user(
                     email=email,
                     password=password,
                     organization=org,
                     role=role,
                 )
-                AuditLog.objects.create(
-                    organization=org,
-                    event_type="USER_REGISTERED",
-                    metadata={"user_id": str(user.id)},
-                )
+                # AuditLog lives in the new org's schema; this view runs on public.
+                with tenant_context(org):
+                    AuditLog.objects.create(
+                        event_type="USER_REGISTERED",
+                        metadata={"user_id": str(user.id)},
+                    )
         except IntegrityError:
             if User.objects.filter(email=email).exists():
                 return Response(

@@ -1,4 +1,5 @@
 import pytest
+from django_tenants.utils import tenant_context
 
 from apps.analytics.models import AnalysisRun
 
@@ -41,9 +42,7 @@ class TestAnalysisRunAPI:
     def test_creates_analysis_run_record(self, auth_client, org):
         payload = {"analysis_type": "burn_rate"}
         auth_client.post(RUN_URL, payload, format="json")
-        assert AnalysisRun.objects.filter(
-            organization=org, analysis_type="burn_rate"
-        ).exists()
+        assert AnalysisRun.objects.filter(analysis_type="burn_rate").exists()
 
     def test_employee_cannot_trigger_analysis(self, org):
         from apps.users.models import User
@@ -83,22 +82,21 @@ class TestAnalysisResultsAPI:
         assert len(results) >= 1
 
     def test_only_returns_own_org_runs(self, auth_client, user2, org, org2):
-        from apps.analytics.models import AnalysisRun
-
-        # Create a run for org2 directly
-        AnalysisRun.objects.create(
-            organization=org2,
-            analysis_type="large_transaction",
-            status=AnalysisRun.Status.SUCCEEDED,
-            results_summary={"analyzer": "large_transaction"},
-        )
+        # Create a run for org2 directly in its own schema
+        with tenant_context(org2):
+            org2_run = AnalysisRun.objects.create(
+                analysis_type="large_transaction",
+                status=AnalysisRun.Status.SUCCEEDED,
+                results_summary={"analyzer": "large_transaction"},
+            )
         # Run for org via authenticated client
-        auth_client.post(RUN_URL, {"analysis_type": "large_transaction"}, format="json")
+        own_run = auth_client.post(RUN_URL, {"analysis_type": "large_transaction"}, format="json")
 
         response = auth_client.get(RESULTS_URL)
         results = response.data.get("results", response.data)
-        for run in results:
-            assert str(run["organization_id"]) == str(org.id)
+        run_ids = [str(run["id"]) for run in results]
+        assert str(own_run.data["id"]) in run_ids
+        assert str(org2_run.id) not in run_ids
 
     def test_filter_by_analysis_type(self, auth_client, org):
         auth_client.post(RUN_URL, {"analysis_type": "large_transaction"}, format="json")

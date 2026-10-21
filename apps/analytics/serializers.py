@@ -41,13 +41,10 @@ class AnalysisRunSerializer(serializers.ModelSerializer):
     Read-only serializer for AnalysisRun records returned from GET endpoints.
     """
 
-    organization_id = serializers.UUIDField(source="organization.id", read_only=True)
-
     class Meta:
         model = AnalysisRun
         fields = [
             "id",
-            "organization_id",
             "analysis_type",
             "status",
             "run_time",

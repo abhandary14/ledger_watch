@@ -11,12 +11,15 @@ Usage:
 """
 
 import random
+import uuid
 from datetime import date, timedelta
 from decimal import Decimal
 
 from django.core.management.base import BaseCommand
+from django.db import transaction as db_transaction
+from django_tenants.utils import tenant_context
 
-from apps.organizations.models import Organization
+from apps.organizations.models import Domain, Organization
 from apps.transactions.models import Transaction
 
 try:
@@ -124,17 +127,31 @@ class Command(BaseCommand):
         # ------------------------------------------------------------------
         # 1. Ensure organization exists
         # ------------------------------------------------------------------
-        org, created = Organization.objects.get_or_create(name=org_name)
-        if created:
+        org = Organization.objects.filter(name=org_name).first()
+        if org is None:
+            # Mirror RegisterView: a tenant needs a schema_name and a Domain row.
+            with db_transaction.atomic():
+                org = Organization(name=org_name, schema_name=f"tenant_{uuid.uuid4().hex[:12]}")
+                org.save()  # auto_create_schema=True creates the PG schema + runs tenant migrations
+                Domain.objects.create(
+                    domain=f"{org.id}.ledgerwatch.local",
+                    tenant=org,
+                    is_primary=True,
+                )
             self.stdout.write(self.style.SUCCESS(f"Created organization: '{org_name}'"))
         else:
             self.stdout.write(f"Using existing organization: '{org_name}'")
 
+        # Transactions live in the org's own schema.
+        with tenant_context(org):
+            self._seed(org_name, do_clear, options, fake, rng)
+
+    def _seed(self, org_name, do_clear, options, fake, rng):
         # ------------------------------------------------------------------
         # 2. Optionally clear existing transactions
         # ------------------------------------------------------------------
         if do_clear:
-            deleted_count, _ = Transaction.objects.filter(organization=org).delete()
+            deleted_count, _ = Transaction.objects.all().delete()
             self.stdout.write(
                 self.style.WARNING(f"Cleared {deleted_count} existing transactions.")
             )
@@ -170,7 +187,6 @@ class Command(BaseCommand):
                     tx_date = _random_date_in_month(month_start, rng, max_date=today)
                     transactions.append(
                         Transaction(
-                            organization=org,
                             date=tx_date,
                             vendor=vendor,
                             amount=amount,
@@ -186,7 +202,6 @@ class Command(BaseCommand):
             tx_date = _random_date_in_month(month_start, rng, max_date=today)
             transactions.append(
                 Transaction(
-                    organization=org,
                     date=tx_date,
                     vendor=REVENUE_VENDOR,
                     amount=amount,
@@ -206,7 +221,6 @@ class Command(BaseCommand):
             tx_date = _random_date_in_month(month_start, rng, max_date=today)
             transactions.append(
                 Transaction(
-                    organization=org,
                     date=tx_date,
                     vendor=vendor,
                     amount=amount,
@@ -225,7 +239,6 @@ class Command(BaseCommand):
             tx_date = _random_date_in_month(current_month_start, rng, max_date=today)
             transactions.append(
                 Transaction(
-                    organization=org,
                     date=tx_date,
                     vendor=vendor,
                     amount=spike_amount,
@@ -253,7 +266,6 @@ class Command(BaseCommand):
             for _ in range(2):  # exact duplicate pair
                 duplicate_transactions.append(
                     Transaction(
-                        organization=org,
                         date=tx_date,
                         vendor=vendor,
                         amount=amount,
