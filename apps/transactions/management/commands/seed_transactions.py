@@ -258,7 +258,7 @@ class Command(BaseCommand):
                     vendor=REVENUE_VENDOR,
                     amount=amount,
                     description=fake.catch_phrase(),
-                    category="revenue",
+                    category="Revenue",
                 )
             )
 

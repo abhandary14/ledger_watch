@@ -10,10 +10,12 @@ from apps.transactions.management.commands.seed_transactions import (
     FIXED_COUNT,
     NUM_MONTHS,
     RECURRING_VENDORS,
+    REVENUE_VENDOR,
     SPIKE_VENDORS,
     _recurring_counts,
 )
 from apps.transactions.models import Transaction
+from services.analyzers.burn_rate import BurnRateAnalyzer
 from services.analyzers.duplicate import DuplicateTransactionAnalyzer
 from services.analyzers.large_transaction import LargeTransactionAnalyzer
 from services.analyzers.vendor_spike import VendorSpikeAnalyzer
@@ -86,3 +88,9 @@ class TestSeededDataTriggersAnalyzers:
         flagged = {v["vendor"] for v in VendorSpikeAnalyzer().run()["flagged_vendors"]}
         for vendor, _ in SPIKE_VENDORS:
             assert vendor in flagged
+
+    def test_seeded_revenue_is_recognised_by_burn_rate(self, org):
+        seed(org, "--seed", "1")
+        expected_revenue = Transaction.objects.filter(vendor=REVENUE_VENDOR).count()
+        assert expected_revenue > 0
+        assert BurnRateAnalyzer().run()["avg_monthly_revenue"] > 0

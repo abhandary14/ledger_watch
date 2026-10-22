@@ -2,15 +2,16 @@
 BurnRateAnalyzer — calculates monthly burn rate and estimated runway.
 
 Logic:
-- Expenses: transactions with amount > 0 that are NOT in the "Revenue" category.
-- Revenue: transactions in the "Revenue" category.
+- Revenue: transactions in the "Revenue" category, matched case-insensitively and
+  ignoring surrounding whitespace ("revenue", " REVENUE " also count).
+- Expenses: transactions with amount > 0 that are NOT revenue.
 - Monthly net burn = average monthly expenses - average monthly revenue.
 - Runway months = average monthly revenue / net burn.
   If net burn <= 0, the org is cash-flow positive (runway reported as None).
 """
 
-from django.db.models import Sum
-from django.db.models.functions import TruncMonth
+from django.db.models import F, Func, Sum, Value
+from django.db.models.functions import Lower, TruncMonth
 
 from apps.transactions.models import Transaction
 from services.analyzers.base import Analyzer
@@ -20,17 +21,21 @@ class BurnRateAnalyzer(Analyzer):
     REVENUE_CATEGORY = "Revenue"
 
     def run(self) -> dict:
-        txs = Transaction.objects.all()
+        # Normalise the category so "revenue" / " Revenue " are recognised too.
+        # REGEXP_REPLACE rather than Trim: PostgreSQL TRIM() strips spaces only, not tabs/newlines.
+        stripped = Func(F("category"), Value(r"^\s+|\s+$"), Value(""), Value("g"), function="REGEXP_REPLACE")
+        txs = Transaction.objects.annotate(category_key=Lower(stripped))
+        revenue_key = self.REVENUE_CATEGORY.lower()
 
         # Aggregate expenses and revenue per calendar month
         expense_by_month = (
-            txs.exclude(category=self.REVENUE_CATEGORY)
+            txs.exclude(category_key=revenue_key)
             .annotate(month=TruncMonth("date"))
             .values("month")
             .annotate(total=Sum("amount"))
         )
         revenue_by_month = (
-            txs.filter(category=self.REVENUE_CATEGORY)
+            txs.filter(category_key=revenue_key)
             .annotate(month=TruncMonth("date"))
             .values("month")
             .annotate(total=Sum("amount"))
