@@ -1,18 +1,18 @@
 """
 Abstract base class for all LedgerWatch analyzers.
 
-Every analyzer must implement run(organization_id) and return a results dict.
+Every analyzer must implement run() and return a results dict.
+Tenant isolation is provided by the active PostgreSQL schema on the connection.
 """
 
 from abc import ABC, abstractmethod
-from uuid import UUID
 
 
 class Analyzer(ABC):
     @abstractmethod
-    def run(self, organization_id: UUID | str) -> dict:
+    def run(self) -> dict:
         """
-        Run the analysis for the given organization and return a results dict.
+        Run the analysis against the current tenant schema and return a results dict.
 
         The returned dict must always include at minimum:
             - "analyzer": str  — the analyzer's type identifier

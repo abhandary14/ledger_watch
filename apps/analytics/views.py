@@ -18,11 +18,12 @@ from rest_framework.views import APIView
 from apps.analytics.models import AnalysisRun
 from apps.analytics.serializers import AnalysisRunRequestSerializer, AnalysisRunSerializer
 from apps.users.permissions import IsAdminOrOwner
+from ledgerwatch.tenant_mixin import TenantViewMixin
 from services.analysis_service import AnalysisService
 from services.exceptions import AlreadyCurrentError
 
 
-class AnalysisRunView(APIView):
+class AnalysisRunView(TenantViewMixin, APIView):
     """
     POST /api/v1/analysis/run
 
@@ -54,14 +55,10 @@ class AnalysisRunView(APIView):
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        org_id = request.user.organization_id
         analysis_type = serializer.validated_data["analysis_type"]
 
         try:
-            run = AnalysisService.run_analysis(
-                organization_id=org_id,
-                analysis_type=analysis_type,
-            )
+            run = AnalysisService.run_analysis(analysis_type=analysis_type)
         except AlreadyCurrentError:
             return Response(
                 {"detail": "All data analyzed — no new transactions since the last run."},
@@ -86,7 +83,7 @@ class AnalysisRunView(APIView):
         ],
     )
 )
-class AnalysisResultsView(ListAPIView):
+class AnalysisResultsView(TenantViewMixin, ListAPIView):
     """
     GET /api/v1/analysis/results
 
@@ -102,9 +99,7 @@ class AnalysisResultsView(ListAPIView):
     serializer_class = AnalysisRunSerializer
 
     def get_queryset(self):
-        qs = AnalysisRun.objects.select_related("organization").filter(
-            organization_id=self.request.user.organization_id
-        )
+        qs = AnalysisRun.objects.all()
 
         analysis_type = self.request.query_params.get("analysis_type")
         if analysis_type:
@@ -128,7 +123,7 @@ class AnalysisResultsView(ListAPIView):
         },
     )
 )
-class AnalysisRunDetailView(RetrieveAPIView):
+class AnalysisRunDetailView(TenantViewMixin, RetrieveAPIView):
     """
     GET /api/v1/analysis/results/<uuid>/
 
@@ -137,8 +132,4 @@ class AnalysisRunDetailView(RetrieveAPIView):
 
     permission_classes = [IsAuthenticated]
     serializer_class = AnalysisRunSerializer
-
-    def get_queryset(self):
-        return AnalysisRun.objects.select_related("organization").filter(
-            organization_id=self.request.user.organization_id
-        )
+    queryset = AnalysisRun.objects.all()

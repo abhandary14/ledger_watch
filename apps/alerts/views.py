@@ -23,6 +23,7 @@ from apps.alerts.models import Alert
 from apps.alerts.serializers import AlertSerializer
 from apps.audit.models import AuditLog
 from apps.users.permissions import IsAdminOrOwner
+from ledgerwatch.tenant_mixin import TenantViewMixin
 
 
 @extend_schema_view(
@@ -40,7 +41,7 @@ from apps.users.permissions import IsAdminOrOwner
         ],
     )
 )
-class AlertListView(ListAPIView):
+class AlertListView(TenantViewMixin, ListAPIView):
     """
     GET /api/v1/alerts/
 
@@ -57,9 +58,7 @@ class AlertListView(ListAPIView):
     serializer_class = AlertSerializer
 
     def get_queryset(self):
-        qs = Alert.objects.select_related("organization").filter(
-            organization_id=self.request.user.organization_id
-        )
+        qs = Alert.objects.all()
 
         alert_type = self.request.query_params.get("alert_type")
         if alert_type:
@@ -79,7 +78,7 @@ class AlertListView(ListAPIView):
         return qs.order_by(ordering)
 
 
-class AlertAcknowledgeView(APIView):
+class AlertAcknowledgeView(TenantViewMixin, APIView):
     """
     POST /api/v1/alerts/<uuid>/acknowledge
 
@@ -110,7 +109,7 @@ class AlertAcknowledgeView(APIView):
     def post(self, request: Request, pk) -> Response:
         with transaction.atomic():
             alert = get_object_or_404(
-                Alert.objects.filter(organization_id=request.user.organization_id).select_for_update(),
+                Alert.objects.select_for_update(),
                 pk=pk,
             )
 
@@ -129,7 +128,6 @@ class AlertAcknowledgeView(APIView):
             alert.save(update_fields=["status"])
 
             AuditLog.objects.create(
-                organization_id=alert.organization_id,
                 event_type="ALERT_ACKNOWLEDGED",
                 metadata={"alert_id": str(alert.id), "alert_type": alert.alert_type},
             )
@@ -137,7 +135,7 @@ class AlertAcknowledgeView(APIView):
         return Response(AlertSerializer(alert).data, status=status.HTTP_200_OK)
 
 
-class AlertResolveView(APIView):
+class AlertResolveView(TenantViewMixin, APIView):
     """
     POST /api/v1/alerts/<uuid>/resolve
 
@@ -167,7 +165,7 @@ class AlertResolveView(APIView):
     def post(self, request: Request, pk) -> Response:
         with transaction.atomic():
             alert = get_object_or_404(
-                Alert.objects.filter(organization_id=request.user.organization_id).select_for_update(),
+                Alert.objects.select_for_update(),
                 pk=pk,
             )
 
@@ -181,7 +179,6 @@ class AlertResolveView(APIView):
             alert.save(update_fields=["status"])
 
             AuditLog.objects.create(
-                organization_id=alert.organization_id,
                 event_type="ALERT_RESOLVED",
                 metadata={"alert_id": str(alert.id), "alert_type": alert.alert_type},
             )
@@ -189,7 +186,7 @@ class AlertResolveView(APIView):
         return Response(AlertSerializer(alert).data, status=status.HTTP_200_OK)
 
 
-class AlertReopenView(APIView):
+class AlertReopenView(TenantViewMixin, APIView):
     """
     POST /api/v1/alerts/<uuid>/reopen
 
@@ -220,7 +217,7 @@ class AlertReopenView(APIView):
     def post(self, request: Request, pk) -> Response:
         with transaction.atomic():
             alert = get_object_or_404(
-                Alert.objects.filter(organization_id=request.user.organization_id).select_for_update(),
+                Alert.objects.select_for_update(),
                 pk=pk,
             )
 
@@ -239,7 +236,6 @@ class AlertReopenView(APIView):
             alert.save(update_fields=["status"])
 
             AuditLog.objects.create(
-                organization_id=alert.organization_id,
                 event_type="ALERT_REOPENED",
                 metadata={"alert_id": str(alert.id), "alert_type": alert.alert_type},
             )
@@ -247,7 +243,7 @@ class AlertReopenView(APIView):
         return Response(AlertSerializer(alert).data, status=status.HTTP_200_OK)
 
 
-class AlertDeleteView(APIView):
+class AlertDeleteView(TenantViewMixin, APIView):
     """
     DELETE /api/v1/alerts/<uuid>/
 
@@ -267,12 +263,11 @@ class AlertDeleteView(APIView):
     def delete(self, request, pk):
         with transaction.atomic():
             alert = get_object_or_404(
-                Alert.objects.filter(organization_id=request.user.organization_id).select_for_update(),
+                Alert.objects.select_for_update(),
                 pk=pk,
             )
 
             AuditLog.objects.create(
-                organization_id=alert.organization_id,
                 event_type="ALERT_DELETED",
                 metadata={"alert_id": str(alert.id), "alert_type": alert.alert_type},
             )

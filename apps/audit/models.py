@@ -3,9 +3,6 @@ import uuid
 from django.core.exceptions import PermissionDenied
 from django.db import models
 
-from apps.organizations.models import Organization
-
-
 class AuditLog(models.Model):
     """
     Immutable, write-once event log for significant system actions.
@@ -31,18 +28,6 @@ class AuditLog(models.Model):
         default=uuid.uuid4,
         editable=False,
         help_text="Unique identifier for this audit log entry (UUID v4, auto-generated).",
-    )
-    organization = models.ForeignKey(
-        Organization,
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        db_index=True,
-        related_name="audit_logs",
-        help_text=(
-            "Organization this event is scoped to, if applicable. "
-            "Null for system-wide or org-agnostic events."
-        ),
     )
     event_type = models.CharField(
         max_length=100,

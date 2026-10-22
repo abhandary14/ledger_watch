@@ -2,6 +2,7 @@ import pytest
 from decimal import Decimal
 from datetime import date
 
+from django_tenants.utils import tenant_context
 from rest_framework.test import APIClient
 
 from apps.transactions.models import Transaction
@@ -37,7 +38,7 @@ class TestTransactionImportAPI:
             ],
         }
         auth_client.post(IMPORT_URL, payload, format="json")
-        assert Transaction.objects.filter(organization=org, vendor="Stripe").exists()
+        assert Transaction.objects.filter(vendor="Stripe").exists()
 
     def test_import_multiple_transactions(self, auth_client, org):
         payload = {
@@ -122,13 +123,14 @@ class TestTransactionListAPI:
 
     def test_only_returns_own_org_transactions(self, auth_client, user, org, user2, org2):
         Transaction.objects.create(
-            organization=org, date=date(2026, 1, 10),
+            date=date(2026, 1, 10),
             vendor="MyOrgVendor", amount=Decimal("50.00")
         )
-        Transaction.objects.create(
-            organization=org2, date=date(2026, 1, 10),
-            vendor="OtherOrgVendor", amount=Decimal("100.00")
-        )
+        with tenant_context(org2):
+            Transaction.objects.create(
+                date=date(2026, 1, 10),
+                vendor="OtherOrgVendor", amount=Decimal("100.00")
+            )
         response = auth_client.get(LIST_URL)
         assert response.status_code == 200
         results = response.data["results"]
@@ -138,11 +140,11 @@ class TestTransactionListAPI:
 
     def test_filter_by_vendor(self, auth_client, org):
         Transaction.objects.create(
-            organization=org, date=date(2026, 1, 10),
+            date=date(2026, 1, 10),
             vendor="FilterMe", amount=Decimal("100.00")
         )
         Transaction.objects.create(
-            organization=org, date=date(2026, 1, 11),
+            date=date(2026, 1, 11),
             vendor="OtherVendor", amount=Decimal("200.00")
         )
         response = auth_client.get(LIST_URL, {"vendor": "FilterMe"})
@@ -153,11 +155,11 @@ class TestTransactionListAPI:
 
     def test_filter_by_category(self, auth_client, org):
         Transaction.objects.create(
-            organization=org, date=date(2026, 1, 10),
+            date=date(2026, 1, 10),
             vendor="Payroll", amount=Decimal("5000.00"), category="Payroll"
         )
         Transaction.objects.create(
-            organization=org, date=date(2026, 1, 11),
+            date=date(2026, 1, 11),
             vendor="AWS", amount=Decimal("200.00"), category="SaaS"
         )
         response = auth_client.get(LIST_URL, {"category": "Payroll"})
@@ -167,11 +169,11 @@ class TestTransactionListAPI:
 
     def test_filter_by_date_from(self, auth_client, org):
         Transaction.objects.create(
-            organization=org, date=date(2026, 1, 5),
+            date=date(2026, 1, 5),
             vendor="Early", amount=Decimal("100.00")
         )
         Transaction.objects.create(
-            organization=org, date=date(2026, 1, 20),
+            date=date(2026, 1, 20),
             vendor="Late", amount=Decimal("200.00")
         )
         response = auth_client.get(LIST_URL, {"date_from": "2026-01-15"})
@@ -182,11 +184,11 @@ class TestTransactionListAPI:
 
     def test_filter_by_date_to(self, auth_client, org):
         Transaction.objects.create(
-            organization=org, date=date(2026, 1, 5),
+            date=date(2026, 1, 5),
             vendor="Early", amount=Decimal("100.00")
         )
         Transaction.objects.create(
-            organization=org, date=date(2026, 1, 20),
+            date=date(2026, 1, 20),
             vendor="Late", amount=Decimal("200.00")
         )
         response = auth_client.get(LIST_URL, {"date_to": "2026-01-10"})

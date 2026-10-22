@@ -13,6 +13,7 @@ Cron example (every Friday at 18:00):
 """
 
 from django.core.management.base import BaseCommand, CommandError
+from django_tenants.utils import get_public_schema_name, tenant_context
 
 from apps.alerts.models import Alert
 from apps.organizations.models import Organization
@@ -56,20 +57,19 @@ class Command(BaseCommand):
         return [org]
 
     def _orgs_with_unreported_alerts(self):
-        org_ids = (
-            Alert.objects.filter(reported=False)
-            .values_list("organization_id", flat=True)
-            .distinct()
-        )
-        return list(Organization.objects.filter(pk__in=org_ids))
+        # Alerts live in each org's own schema, so check them one tenant at a time.
+        orgs = []
+        for org in Organization.objects.exclude(schema_name=get_public_schema_name()):
+            with tenant_context(org):
+                if Alert.objects.filter(reported=False).exists():
+                    orgs.append(org)
+        return orgs
 
     def _run_for_org(self, org: Organization) -> None:
         label = f"[{org.name}]"
         try:
-            report_run = ReportService.generate_report(
-                organization_id=org.id,
-                triggered_by="scheduled",
-            )
+            with tenant_context(org):
+                report_run = ReportService.generate_report(triggered_by="scheduled")
         except Exception as exc:
             self.stderr.write(f"{label} ERROR: {exc}")
             return

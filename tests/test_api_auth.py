@@ -1,5 +1,8 @@
 import pytest
+from django.db import connection
+from django_tenants.utils import tenant_context
 
+from apps.audit.models import AuditLog
 from apps.organizations.models import Organization
 from apps.users.models import User
 
@@ -50,6 +53,38 @@ class TestRegisterAPI:
         }
         api_client.post(REGISTER_URL, payload, format="json")
         assert Organization.objects.filter(name="Brand New Org").exists()
+
+    def test_register_creates_tenant_schema_and_domain(self, api_client):
+        payload = {
+            "email": "schema@example.com",
+            "password": "securepass123",
+            "organization_name": "Schema Corp",
+        }
+        api_client.post(REGISTER_URL, payload, format="json")
+        org = Organization.objects.get(name="Schema Corp")
+        assert org.schema_name.startswith("tenant_")
+        assert org.domains.filter(is_primary=True).exists()
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT 1 FROM information_schema.schemata WHERE schema_name = %s",
+                [org.schema_name],
+            )
+            assert cursor.fetchone() is not None
+
+    def test_register_writes_audit_log_in_new_tenant_schema(self, api_client):
+        payload = {
+            "email": "auditreg@example.com",
+            "password": "securepass123",
+            "organization_name": "Audit Reg Corp",
+        }
+        api_client.post(REGISTER_URL, payload, format="json")
+        org = Organization.objects.get(name="Audit Reg Corp")
+        user = User.objects.get(email="auditreg@example.com")
+        with tenant_context(org):
+            assert AuditLog.objects.filter(
+                event_type="USER_REGISTERED",
+                metadata__user_id=str(user.id),
+            ).exists()
 
     def test_register_owner_email_creates_owner_user(self, api_client):
         payload = {

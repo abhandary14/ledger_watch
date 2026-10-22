@@ -21,7 +21,7 @@ class TestAlertServiceLargeTransaction:
         results = self._make_results(10000.0, [
             {"id": tx_id, "vendor": "BigCo", "amount": 15000.0, "date": "2026-01-10"},
         ])
-        alerts = AlertService.generate_alerts(org.id, "large_transaction", results)
+        alerts = AlertService.generate_alerts("large_transaction", results)
         assert len(alerts) == 1
         assert Alert.objects.filter(id=alerts[0].id).exists()
 
@@ -33,7 +33,7 @@ class TestAlertServiceLargeTransaction:
         results = self._make_results(threshold, [
             {"id": tx_id, "vendor": "MidCo", "amount": amount, "date": "2026-01-10"},
         ])
-        alerts = AlertService.generate_alerts(org.id, "large_transaction", results)
+        alerts = AlertService.generate_alerts("large_transaction", results)
         assert alerts[0].severity == Alert.Severity.MEDIUM
 
     def test_high_severity_for_amount_above_2_5x_threshold(self, org):
@@ -44,12 +44,12 @@ class TestAlertServiceLargeTransaction:
         results = self._make_results(threshold, [
             {"id": tx_id, "vendor": "HugeCo", "amount": amount, "date": "2026-01-10"},
         ])
-        alerts = AlertService.generate_alerts(org.id, "large_transaction", results)
+        alerts = AlertService.generate_alerts("large_transaction", results)
         assert alerts[0].severity == Alert.Severity.HIGH
 
     def test_no_alerts_for_empty_flagged_list(self, org):
         results = self._make_results(10000.0, [])
-        alerts = AlertService.generate_alerts(org.id, "large_transaction", results)
+        alerts = AlertService.generate_alerts("large_transaction", results)
         assert len(alerts) == 0
 
 
@@ -63,7 +63,7 @@ class TestAlertServiceBurnRate:
             "net_monthly_burn": 9000.0,
             "runway_months": 1.5,
         }
-        alerts = AlertService.generate_alerts(org.id, "burn_rate", results)
+        alerts = AlertService.generate_alerts("burn_rate", results)
         assert len(alerts) == 1
         assert alerts[0].severity == Alert.Severity.HIGH
 
@@ -75,7 +75,7 @@ class TestAlertServiceBurnRate:
             "net_monthly_burn": 3000.0,
             "runway_months": 4.0,
         }
-        alerts = AlertService.generate_alerts(org.id, "burn_rate", results)
+        alerts = AlertService.generate_alerts("burn_rate", results)
         assert len(alerts) == 1
         assert alerts[0].severity == Alert.Severity.MEDIUM
 
@@ -87,7 +87,7 @@ class TestAlertServiceBurnRate:
             "net_monthly_burn": 1000.0,
             "runway_months": 8.0,
         }
-        alerts = AlertService.generate_alerts(org.id, "burn_rate", results)
+        alerts = AlertService.generate_alerts("burn_rate", results)
         assert len(alerts) == 1
         assert alerts[0].severity == Alert.Severity.LOW
 
@@ -99,7 +99,7 @@ class TestAlertServiceBurnRate:
             "net_monthly_burn": -4000.0,
             "runway_months": None,
         }
-        alerts = AlertService.generate_alerts(org.id, "burn_rate", results)
+        alerts = AlertService.generate_alerts("burn_rate", results)
         assert len(alerts) == 0
 
 
@@ -121,7 +121,7 @@ class TestAlertServiceDuplicate:
                 }
             ],
         }
-        alerts = AlertService.generate_alerts(org.id, "duplicate", results)
+        alerts = AlertService.generate_alerts("duplicate", results)
         assert len(alerts) == 1
         assert alerts[0].severity == Alert.Severity.LOW
         assert alerts[0].alert_type == "duplicate"
@@ -133,7 +133,7 @@ class TestAlertServiceDuplicate:
             "duplicate_group_count": 0,
             "duplicate_groups": [],
         }
-        alerts = AlertService.generate_alerts(org.id, "duplicate", results)
+        alerts = AlertService.generate_alerts("duplicate", results)
         assert len(alerts) == 0
 
 
@@ -155,7 +155,7 @@ class TestAlertServiceVendorSpike:
                 }
             ],
         }
-        alerts = AlertService.generate_alerts(org.id, "vendor_spike", results)
+        alerts = AlertService.generate_alerts("vendor_spike", results)
         assert len(alerts) == 1
         assert alerts[0].severity == Alert.Severity.LOW
 
@@ -175,7 +175,7 @@ class TestAlertServiceVendorSpike:
                 }
             ],
         }
-        alerts = AlertService.generate_alerts(org.id, "vendor_spike", results)
+        alerts = AlertService.generate_alerts("vendor_spike", results)
         assert len(alerts) == 1
         assert alerts[0].severity == Alert.Severity.MEDIUM
 
@@ -195,7 +195,7 @@ class TestAlertServiceVendorSpike:
                 }
             ],
         }
-        alerts = AlertService.generate_alerts(org.id, "vendor_spike", results)
+        alerts = AlertService.generate_alerts("vendor_spike", results)
         assert len(alerts) == 1
         assert alerts[0].severity == Alert.Severity.LOW
 
@@ -215,16 +215,12 @@ class TestAlertServiceVendorSpike:
                 }
             ],
         }
-        before = AuditLog.objects.filter(
-            organization=org, event_type="ALERTS_GENERATED"
-        ).count()
-        AlertService.generate_alerts(org.id, "vendor_spike", results)
-        after = AuditLog.objects.filter(
-            organization=org, event_type="ALERTS_GENERATED"
-        ).count()
+        before = AuditLog.objects.filter(event_type="ALERTS_GENERATED").count()
+        AlertService.generate_alerts("vendor_spike", results)
+        after = AuditLog.objects.filter(event_type="ALERTS_GENERATED").count()
         assert after == before + 1
 
     def test_unknown_analyzer_returns_empty_list(self, org):
         results = {"analyzer": "unknown", "data": []}
-        alerts = AlertService.generate_alerts(org.id, "unknown", results)
+        alerts = AlertService.generate_alerts("unknown", results)
         assert alerts == []

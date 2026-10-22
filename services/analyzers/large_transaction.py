@@ -8,8 +8,6 @@ This catches both relatively large outliers within a normal-spending org
 and absolutely large transactions for orgs with very low average spend.
 """
 
-from uuid import UUID
-
 from django.db.models import Avg
 
 from apps.transactions.models import Transaction
@@ -19,8 +17,8 @@ from services.analyzers.base import Analyzer
 class LargeTransactionAnalyzer(Analyzer):
     HARD_FLOOR = 10_000
 
-    def run(self, organization_id: UUID | str) -> dict:
-        txs = Transaction.objects.filter(organization_id=organization_id)
+    def run(self) -> dict:
+        txs = Transaction.objects.all()
         avg = txs.aggregate(avg=Avg("amount"))["avg"] or 0
         threshold = max(float(avg) * 2, self.HARD_FLOOR)
 

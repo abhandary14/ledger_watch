@@ -2,9 +2,6 @@ import uuid
 
 from django.db import models
 
-from apps.organizations.models import Organization
-
-
 class ReportRun(models.Model):
     """
     Audit record for a single report generation attempt.
@@ -23,12 +20,6 @@ class ReportRun(models.Model):
         default=uuid.uuid4,
         editable=False,
         help_text="Unique identifier for this report run (UUID v4, auto-generated).",
-    )
-    organization = models.ForeignKey(
-        Organization,
-        on_delete=models.PROTECT,
-        related_name="report_runs",
-        help_text="The organization this report was generated for.",
     )
     generated_at = models.DateTimeField(
         auto_now_add=True,
@@ -67,4 +58,4 @@ class ReportRun(models.Model):
 
     def __str__(self) -> str:
         ts = self.generated_at.strftime("%Y-%m-%d %H:%M") if self.generated_at else "unsaved"
-        return f"Report [{self.status}] @ {ts} (org={self.organization_id})"
+        return f"Report [{self.status}] @ {ts}"
