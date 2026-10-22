@@ -247,6 +247,40 @@ class TestBurnRateAnalyzer:
         assert result["net_monthly_burn"] <= 0
         assert result["runway_months"] is None
 
+    @pytest.mark.parametrize("category", ["Revenue", "revenue", "REVENUE", " Revenue ", "revenue\t"])
+    def test_revenue_category_is_case_and_whitespace_insensitive(self, org, category):
+        Transaction.objects.create(
+            date=date(2026, 1, 10),
+            vendor="Landlord",
+            amount=Decimal("5000.00"),
+            category="Overhead",
+        )
+        Transaction.objects.create(
+            date=date(2026, 1, 15),
+            vendor="Customer",
+            amount=Decimal("1000.00"),
+            category=category,
+        )
+
+        result = BurnRateAnalyzer().run()
+
+        assert result["avg_monthly_revenue"] == 1000.0
+        assert result["avg_monthly_expenses"] == 5000.0
+        assert result["net_monthly_burn"] == 4000.0
+
+    def test_category_containing_revenue_is_still_an_expense(self, org):
+        Transaction.objects.create(
+            date=date(2026, 1, 10),
+            vendor="Partner",
+            amount=Decimal("700.00"),
+            category="Revenue Share",
+        )
+
+        result = BurnRateAnalyzer().run()
+
+        assert result["avg_monthly_revenue"] == 0.0
+        assert result["avg_monthly_expenses"] == 700.0
+
     def test_returns_correct_keys(self, org):
         result = BurnRateAnalyzer().run()
         assert "analyzer" in result
