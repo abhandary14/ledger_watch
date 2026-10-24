@@ -33,8 +33,6 @@ from collections import defaultdict
 from datetime import date
 from pathlib import Path
 
-_logger = logging.getLogger(__name__)
-
 import bleach
 
 import anthropic
@@ -49,6 +47,8 @@ from apps.reports.models import ReportRun
 from factories.analyzer_factory import AnalyzerFactory
 from services.analysis_service import AnalysisService
 from services.exceptions import AlreadyCurrentError
+
+_logger = logging.getLogger(__name__)
 
 # Tags and attributes Claude is instructed to emit; everything else is stripped.
 _NARRATIVE_ALLOWED_TAGS = ["h2", "h3", "p", "ul", "ol", "li", "strong", "em", "b", "i", "span", "br"]
