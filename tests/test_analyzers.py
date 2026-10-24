@@ -16,19 +16,17 @@ class TestLargeTransactionAnalyzer:
         # 5 normal transactions averaging $100; threshold = max(200, 10000) = 10000
         for i in range(5):
             Transaction.objects.create(
-                organization=org,
                 date=date(2026, 1, i + 1),
                 vendor="Normal",
                 amount=Decimal("100.00"),
             )
         big = Transaction.objects.create(
-            organization=org,
             date=date(2026, 1, 10),
             vendor="BigSpend",
             amount=Decimal("15000.00"),
         )
 
-        result = LargeTransactionAnalyzer().run(org.id)
+        result = LargeTransactionAnalyzer().run()
 
         assert result["analyzer"] == "large_transaction"
         assert result["flagged_count"] == 1
@@ -38,13 +36,12 @@ class TestLargeTransactionAnalyzer:
     def test_does_not_flag_normal_transactions(self, org):
         for i in range(5):
             Transaction.objects.create(
-                organization=org,
                 date=date(2026, 1, i + 1),
                 vendor="Normal",
                 amount=Decimal("500.00"),
             )
 
-        result = LargeTransactionAnalyzer().run(org.id)
+        result = LargeTransactionAnalyzer().run()
         # threshold = max(1000, 10000) = 10000; no transaction above that
         assert result["flagged_count"] == 0
 
@@ -54,24 +51,22 @@ class TestLargeTransactionAnalyzer:
         # $20000 > $16667 → flagged
         for i in range(5):
             Transaction.objects.create(
-                organization=org,
                 date=date(2026, 1, i + 1),
                 vendor="Regular",
                 amount=Decimal("6000.00"),
             )
         big = Transaction.objects.create(
-            organization=org,
             date=date(2026, 1, 10),
             vendor="Spike",
             amount=Decimal("20000.00"),
         )
 
-        result = LargeTransactionAnalyzer().run(org.id)
+        result = LargeTransactionAnalyzer().run()
         assert result["flagged_count"] == 1
         assert str(big.id) in [str(tx["id"]) for tx in result["flagged_transactions"]]
 
     def test_returns_correct_keys(self, org):
-        result = LargeTransactionAnalyzer().run(org.id)
+        result = LargeTransactionAnalyzer().run()
         assert "analyzer" in result
         assert "threshold" in result
         assert "flagged_count" in result
@@ -84,20 +79,18 @@ class TestDuplicateTransactionAnalyzer:
         # Two transactions created in the same bulk_create → created_at within seconds
         tx1, tx2 = Transaction.objects.bulk_create([
             Transaction(
-                organization=org,
                 date=date(2026, 1, 5),
                 vendor="Stripe",
                 amount=Decimal("250.00"),
             ),
             Transaction(
-                organization=org,
                 date=date(2026, 1, 5),
                 vendor="Stripe",
                 amount=Decimal("250.00"),
             ),
         ])
 
-        result = DuplicateTransactionAnalyzer().run(org.id)
+        result = DuplicateTransactionAnalyzer().run()
 
         assert result["analyzer"] == "duplicate"
         assert result["duplicate_group_count"] == 1
@@ -110,40 +103,36 @@ class TestDuplicateTransactionAnalyzer:
 
     def test_no_duplicates_for_different_vendors(self, org):
         Transaction.objects.create(
-            organization=org,
             date=date(2026, 1, 5),
             vendor="Stripe",
             amount=Decimal("250.00"),
         )
         Transaction.objects.create(
-            organization=org,
             date=date(2026, 1, 5),
             vendor="PayPal",
             amount=Decimal("250.00"),
         )
 
-        result = DuplicateTransactionAnalyzer().run(org.id)
+        result = DuplicateTransactionAnalyzer().run()
         assert result["duplicate_group_count"] == 0
 
     def test_no_duplicates_for_different_amounts(self, org):
         Transaction.objects.create(
-            organization=org,
             date=date(2026, 1, 5),
             vendor="Stripe",
             amount=Decimal("250.00"),
         )
         Transaction.objects.create(
-            organization=org,
             date=date(2026, 1, 5),
             vendor="Stripe",
             amount=Decimal("300.00"),
         )
 
-        result = DuplicateTransactionAnalyzer().run(org.id)
+        result = DuplicateTransactionAnalyzer().run()
         assert result["duplicate_group_count"] == 0
 
     def test_returns_window_hours_48(self, org):
-        result = DuplicateTransactionAnalyzer().run(org.id)
+        result = DuplicateTransactionAnalyzer().run()
         assert result["window_hours"] == 48
 
 
@@ -152,19 +141,17 @@ class TestVendorSpikeAnalyzer:
     def test_flags_vendor_with_30_percent_increase(self, org):
         # Previous month: $1000, current month: $1300 (30% increase — above 25% threshold)
         Transaction.objects.create(
-            organization=org,
             date=date(2026, 1, 15),
             vendor="VendorA",
             amount=Decimal("1000.00"),
         )
         Transaction.objects.create(
-            organization=org,
             date=date(2026, 2, 15),
             vendor="VendorA",
             amount=Decimal("1300.00"),
         )
 
-        result = VendorSpikeAnalyzer().run(org.id)
+        result = VendorSpikeAnalyzer().run()
 
         assert result["analyzer"] == "vendor_spike"
         flagged_vendors = [v["vendor"] for v in result["flagged_vendors"]]
@@ -173,51 +160,46 @@ class TestVendorSpikeAnalyzer:
     def test_does_not_flag_vendor_below_threshold(self, org):
         # $1000 → $1100 (10% — below 25% threshold)
         Transaction.objects.create(
-            organization=org,
             date=date(2026, 1, 15),
             vendor="StableVendor",
             amount=Decimal("1000.00"),
         )
         Transaction.objects.create(
-            organization=org,
             date=date(2026, 2, 15),
             vendor="StableVendor",
             amount=Decimal("1100.00"),
         )
 
-        result = VendorSpikeAnalyzer().run(org.id)
+        result = VendorSpikeAnalyzer().run()
         flagged_vendors = [v["vendor"] for v in result["flagged_vendors"]]
         assert "StableVendor" not in flagged_vendors
 
     def test_flags_new_vendor_with_no_prior_baseline(self, org):
         # OldVendor only in Jan, NewVendor only in Feb → NewVendor flagged
         Transaction.objects.create(
-            organization=org,
             date=date(2026, 1, 15),
             vendor="OldVendor",
             amount=Decimal("500.00"),
         )
         Transaction.objects.create(
-            organization=org,
             date=date(2026, 2, 15),
             vendor="NewVendor",
             amount=Decimal("800.00"),
         )
 
-        result = VendorSpikeAnalyzer().run(org.id)
+        result = VendorSpikeAnalyzer().run()
         flagged_vendors = [v["vendor"] for v in result["flagged_vendors"]]
         assert "NewVendor" in flagged_vendors
 
     def test_insufficient_data_returns_note(self, org):
         # Only one month of data → can't compare, returns note
         Transaction.objects.create(
-            organization=org,
             date=date(2026, 1, 15),
             vendor="VendorX",
             amount=Decimal("500.00"),
         )
 
-        result = VendorSpikeAnalyzer().run(org.id)
+        result = VendorSpikeAnalyzer().run()
         assert "note" in result
         assert result["flagged_vendors"] == []
 
@@ -227,21 +209,19 @@ class TestBurnRateAnalyzer:
     def test_returns_positive_burn_and_runway(self, org):
         # Expenses > Revenue → positive burn, runway computed
         Transaction.objects.create(
-            organization=org,
             date=date(2026, 1, 10),
             vendor="Landlord",
             amount=Decimal("5000.00"),
             category="Overhead",
         )
         Transaction.objects.create(
-            organization=org,
             date=date(2026, 1, 15),
             vendor="Customer",
             amount=Decimal("1000.00"),
             category="Revenue",  # must match REVENUE_CATEGORY = "Revenue"
         )
 
-        result = BurnRateAnalyzer().run(org.id)
+        result = BurnRateAnalyzer().run()
 
         assert result["analyzer"] == "burn_rate"
         assert result["net_monthly_burn"] > 0
@@ -250,27 +230,59 @@ class TestBurnRateAnalyzer:
     def test_runway_is_none_when_cash_flow_positive(self, org):
         # Revenue > Expenses → no burn → runway = None
         Transaction.objects.create(
-            organization=org,
             date=date(2026, 1, 10),
             vendor="BigClient",
             amount=Decimal("10000.00"),
             category="Revenue",
         )
         Transaction.objects.create(
-            organization=org,
             date=date(2026, 1, 15),
             vendor="Office",
             amount=Decimal("500.00"),
             category="Overhead",
         )
 
-        result = BurnRateAnalyzer().run(org.id)
+        result = BurnRateAnalyzer().run()
 
         assert result["net_monthly_burn"] <= 0
         assert result["runway_months"] is None
 
+    @pytest.mark.parametrize("category", ["Revenue", "revenue", "REVENUE", " Revenue ", "revenue\t"])
+    def test_revenue_category_is_case_and_whitespace_insensitive(self, org, category):
+        Transaction.objects.create(
+            date=date(2026, 1, 10),
+            vendor="Landlord",
+            amount=Decimal("5000.00"),
+            category="Overhead",
+        )
+        Transaction.objects.create(
+            date=date(2026, 1, 15),
+            vendor="Customer",
+            amount=Decimal("1000.00"),
+            category=category,
+        )
+
+        result = BurnRateAnalyzer().run()
+
+        assert result["avg_monthly_revenue"] == 1000.0
+        assert result["avg_monthly_expenses"] == 5000.0
+        assert result["net_monthly_burn"] == 4000.0
+
+    def test_category_containing_revenue_is_still_an_expense(self, org):
+        Transaction.objects.create(
+            date=date(2026, 1, 10),
+            vendor="Partner",
+            amount=Decimal("700.00"),
+            category="Revenue Share",
+        )
+
+        result = BurnRateAnalyzer().run()
+
+        assert result["avg_monthly_revenue"] == 0.0
+        assert result["avg_monthly_expenses"] == 700.0
+
     def test_returns_correct_keys(self, org):
-        result = BurnRateAnalyzer().run(org.id)
+        result = BurnRateAnalyzer().run()
         assert "analyzer" in result
         assert "avg_monthly_expenses" in result
         assert "avg_monthly_revenue" in result

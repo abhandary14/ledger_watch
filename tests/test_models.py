@@ -10,20 +10,28 @@ from apps.analytics.models import AnalysisRun
 from apps.audit.models import AuditLog
 
 
+def _make_org(name, schema_name):
+    """Save an Organization without creating its schema — these tests only cover model fields."""
+    org = Organization(name=name, schema_name=schema_name)
+    org.auto_create_schema = False
+    org.save()
+    return org
+
+
 @pytest.mark.django_db
 class TestOrganizationModel:
     def test_creates_with_uuid_pk(self):
-        org = Organization.objects.create(name="Acme Corp")
+        org = _make_org("Acme Corp", "tenant_acme")
         assert org.id is not None
         assert str(org.id)
         assert org.name == "Acme Corp"
 
     def test_created_at_is_set_automatically(self):
-        org = Organization.objects.create(name="Stamp Corp")
+        org = _make_org("Stamp Corp", "tenant_stamp")
         assert org.created_at is not None
 
     def test_str_returns_name(self):
-        org = Organization.objects.create(name="Baz LLC")
+        org = _make_org("Baz LLC", "tenant_baz")
         assert str(org) == "Baz LLC"
 
 
@@ -31,7 +39,6 @@ class TestOrganizationModel:
 class TestTransactionModel:
     def test_creates_with_all_fields(self, org):
         tx = Transaction.objects.create(
-            organization=org,
             date=date(2026, 1, 10),
             vendor="AWS",
             amount=Decimal("500.00"),
@@ -46,7 +53,6 @@ class TestTransactionModel:
 
     def test_optional_fields_default_to_empty_string(self, org):
         tx = Transaction.objects.create(
-            organization=org,
             date=date(2026, 1, 10),
             vendor="Stripe",
             amount=Decimal("200.00"),
@@ -56,7 +62,6 @@ class TestTransactionModel:
 
     def test_clean_rejects_zero_amount(self, org):
         tx = Transaction(
-            organization=org,
             date=date(2026, 1, 10),
             vendor="Bad",
             amount=Decimal("0.00"),
@@ -66,7 +71,6 @@ class TestTransactionModel:
 
     def test_clean_rejects_negative_amount(self, org):
         tx = Transaction(
-            organization=org,
             date=date(2026, 1, 10),
             vendor="Bad",
             amount=Decimal("-50.00"),
@@ -76,7 +80,6 @@ class TestTransactionModel:
 
     def test_str_format(self, org):
         tx = Transaction.objects.create(
-            organization=org,
             date=date(2026, 1, 10),
             vendor="Paypal",
             amount=Decimal("99.99"),
@@ -90,7 +93,6 @@ class TestTransactionModel:
 class TestAuditLogImmutability:
     def test_initial_create_succeeds(self, org):
         log = AuditLog.objects.create(
-            organization=org,
             event_type="TEST_EVENT",
             metadata={"key": "value"},
         )
@@ -98,7 +100,6 @@ class TestAuditLogImmutability:
 
     def test_save_raises_on_update(self, org):
         log = AuditLog.objects.create(
-            organization=org,
             event_type="TEST_EVENT",
             metadata={},
         )
@@ -108,7 +109,6 @@ class TestAuditLogImmutability:
 
     def test_delete_raises(self, org):
         log = AuditLog.objects.create(
-            organization=org,
             event_type="TEST_EVENT",
             metadata={},
         )
@@ -120,7 +120,6 @@ class TestAuditLogImmutability:
 class TestAnalysisRunInvariants:
     def test_pending_rejects_results_summary(self, org):
         run = AnalysisRun(
-            organization=org,
             analysis_type="large_transaction",
             status=AnalysisRun.Status.PENDING,
             results_summary={"some": "data"},
@@ -130,7 +129,6 @@ class TestAnalysisRunInvariants:
 
     def test_pending_rejects_error_message(self, org):
         run = AnalysisRun(
-            organization=org,
             analysis_type="large_transaction",
             status=AnalysisRun.Status.PENDING,
             error_message="some error",
@@ -140,7 +138,6 @@ class TestAnalysisRunInvariants:
 
     def test_succeeded_requires_results_summary(self, org):
         run = AnalysisRun(
-            organization=org,
             analysis_type="large_transaction",
             status=AnalysisRun.Status.SUCCEEDED,
             results_summary=None,
@@ -150,7 +147,6 @@ class TestAnalysisRunInvariants:
 
     def test_succeeded_rejects_error_message(self, org):
         run = AnalysisRun(
-            organization=org,
             analysis_type="large_transaction",
             status=AnalysisRun.Status.SUCCEEDED,
             results_summary={"flagged": []},
@@ -161,7 +157,6 @@ class TestAnalysisRunInvariants:
 
     def test_failed_requires_error_message(self, org):
         run = AnalysisRun(
-            organization=org,
             analysis_type="large_transaction",
             status=AnalysisRun.Status.FAILED,
             error_message=None,
@@ -171,7 +166,6 @@ class TestAnalysisRunInvariants:
 
     def test_failed_rejects_results_summary(self, org):
         run = AnalysisRun(
-            organization=org,
             analysis_type="large_transaction",
             status=AnalysisRun.Status.FAILED,
             error_message="boom",
@@ -182,7 +176,6 @@ class TestAnalysisRunInvariants:
 
     def test_valid_succeeded_passes_clean(self, org):
         run = AnalysisRun(
-            organization=org,
             analysis_type="large_transaction",
             status=AnalysisRun.Status.SUCCEEDED,
             results_summary={"flagged": []},
@@ -191,7 +184,6 @@ class TestAnalysisRunInvariants:
 
     def test_valid_failed_passes_clean(self, org):
         run = AnalysisRun(
-            organization=org,
             analysis_type="large_transaction",
             status=AnalysisRun.Status.FAILED,
             error_message="Something went wrong",

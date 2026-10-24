@@ -12,8 +12,8 @@ class AuditLogAdmin(admin.ModelAdmin):
     are permitted through the admin interface.
     """
 
-    list_display = ["event_type", "organization", "created_at"]
-    list_filter = ["event_type", "organization"]
+    list_display = ["event_type", "created_at"]
+    list_filter = ["event_type"]
     search_fields = ["event_type", "metadata"]
     ordering = ["-created_at"]
 

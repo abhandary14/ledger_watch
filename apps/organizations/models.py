@@ -3,14 +3,18 @@ import uuid
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
+from django_tenants.models import DomainMixin, TenantMixin
 
 
-class Organization(models.Model):
+class Organization(TenantMixin):
     """
     Represents a business entity using LedgerWatch.
 
-    Every Transaction, Alert, and AnalysisRun is scoped to an Organization.
-    This is the top-level tenant in the system.
+    Each Organization maps to its own PostgreSQL schema (tenant_<uuid_prefix>).
+    Tenant-scoped tables (Transaction, Alert, AnalysisRun, AuditLog, ReportRun)
+    live inside that schema and carry no organization FK.
+
+    TenantMixin adds: schema_name (CharField, unique).
     """
 
     id = models.UUIDField(
@@ -29,6 +33,10 @@ class Organization(models.Model):
         help_text="Timestamp when the organization record was created. Set automatically.",
     )
 
+    # Automatically create/drop the PostgreSQL schema on save/delete.
+    auto_create_schema = True
+    auto_drop_schema = True
+
     class Meta:
         ordering = ["name"]
         verbose_name = "Organization"
@@ -36,6 +44,17 @@ class Organization(models.Model):
 
     def __str__(self) -> str:
         return self.name
+
+
+class Domain(DomainMixin):
+    """
+    Required by django-tenants. Each tenant needs at least one domain row.
+
+    Since LedgerWatch resolves tenants via JWT (not subdomains), we create
+    a dummy domain per tenant: '<org-uuid>.ledgerwatch.local'.
+    """
+
+    pass
 
 
 class SecurityChallenge(models.Model):

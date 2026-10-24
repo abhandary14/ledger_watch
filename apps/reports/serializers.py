@@ -4,13 +4,10 @@ from apps.reports.models import ReportRun
 
 
 class ReportRunSerializer(serializers.ModelSerializer):
-    organization_id = serializers.UUIDField(source="organization.id", read_only=True)
-
     class Meta:
         model = ReportRun
         fields = [
             "id",
-            "organization_id",
             "generated_at",
             "report_path",
             "alert_count",

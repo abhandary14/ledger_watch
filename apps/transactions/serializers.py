@@ -16,13 +16,10 @@ def validate_positive_amount(value):
 class TransactionSerializer(serializers.ModelSerializer):
     """Read serializer for a single Transaction."""
 
-    organization_id = serializers.UUIDField(source="organization.id", read_only=True)
-
     class Meta:
         model = Transaction
         fields = [
             "id",
-            "organization_id",
             "date",
             "vendor",
             "amount",

@@ -257,7 +257,9 @@ pipeline {
         // Writes a temporary config/.env from Jenkins credentials, then brings
         // up the full stack. The api container's entrypoint runs migrations
         // automatically before starting gunicorn.
+        // Only deploys builds of main (needs a Multibranch Pipeline job, which sets BRANCH_NAME).
         stage('Deploy') {
+            when { branch 'main' }
             steps {
                 script {
                     writeFile file: 'config/.env', text: [
