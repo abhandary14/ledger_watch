@@ -72,7 +72,7 @@ function RoleBadge({ role }: { role: OrgMember['role'] }) {
 // ─── add member dialog ────────────────────────────────────────────────────────
 
 const addMemberSchema = z.object({
-  email: z.string().email('Invalid email address'),
+  email: z.email('Invalid email address'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
   role: z.enum(['admin', 'employee']),
   first_name: z.string().max(100).optional(),

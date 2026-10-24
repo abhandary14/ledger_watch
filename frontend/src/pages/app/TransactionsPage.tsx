@@ -184,7 +184,7 @@ function TransactionDetail({
 // ─── add transaction dialog ───────────────────────────────────────────────────
 
 const addSchema = z.object({
-  date: z.date({ required_error: 'Date is required' }),
+  date: z.date({ error: 'Date is required' }),
   vendor: z.string().min(1, 'Vendor is required'),
   amount: z
     .string()
