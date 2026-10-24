@@ -362,6 +362,7 @@ function TransferOwnershipDialog({ member }: { member: OrgMember }) {
   const [challengeError, setChallengeError] = useState(false)
   const { logout } = useAuth()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
 
   const newEmail = `owner@${member.email.split('@')[1]}`
 
@@ -394,6 +395,7 @@ function TransferOwnershipDialog({ member }: { member: OrgMember }) {
       toast.success('Ownership transferred. You have been signed out.')
       setOpen(false)
       await logout()
+      queryClient.clear()
       navigate('/login')
     },
     onError: (err: unknown) => {
