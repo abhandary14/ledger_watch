@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import {
   AlertCircle,
   BarChart2,
@@ -20,10 +21,12 @@ import { cn } from '@/lib/utils'
 export function AppLayout() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [collapsed, setCollapsed] = useState(false)
 
   const handleLogout = async () => {
     await logout()
+    queryClient.clear()
     navigate('/login')
   }
 
