@@ -218,6 +218,7 @@ function AddTransactionDialog({ open, onOpenChange }: AddTransactionDialogProps)
     mutationFn: (row: TransactionImportRow) => importTransactionsApi([row]),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['transactions'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       toast.success('Transaction added')
       onOpenChange(false)
       reset({ date: new Date() })
@@ -410,6 +411,7 @@ function ImportCsvDialog({ open, onOpenChange }: ImportCsvDialogProps) {
     mutationFn: (rows: TransactionImportRow[]) => importTransactionsApi(rows),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['transactions'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       setImportResult({ success: res.data.imported, skipped: res.data.skipped })
       setStep(4)
     },
