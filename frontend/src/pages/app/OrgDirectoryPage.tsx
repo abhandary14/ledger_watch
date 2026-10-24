@@ -101,7 +101,7 @@ export function OrgDirectoryPage() {
 
   const displayed = (() => {
     if (!members) return []
-    let list = roleFilter ? members.filter((m) => m.role === roleFilter) : [...members]
+    const list = roleFilter ? members.filter((m) => m.role === roleFilter) : [...members]
     if (sortField === 'name') {
       list.sort((a, b) => {
         const na = `${a.first_name} ${a.last_name}`.trim() || a.email

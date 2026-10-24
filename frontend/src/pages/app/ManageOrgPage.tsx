@@ -362,6 +362,7 @@ function TransferOwnershipDialog({ member }: { member: OrgMember }) {
   const [challengeError, setChallengeError] = useState(false)
   const { logout } = useAuth()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
 
   const newEmail = `owner@${member.email.split('@')[1]}`
 
@@ -394,6 +395,7 @@ function TransferOwnershipDialog({ member }: { member: OrgMember }) {
       toast.success('Ownership transferred. You have been signed out.')
       setOpen(false)
       await logout()
+      queryClient.clear()
       navigate('/login')
     },
     onError: (err: unknown) => {
@@ -547,7 +549,7 @@ export function ManageOrgPage() {
 
   const displayed = (() => {
     if (!members) return []
-    let list = roleFilter ? members.filter((m) => m.role === roleFilter) : [...members]
+    const list = roleFilter ? members.filter((m) => m.role === roleFilter) : [...members]
     if (sortField === 'name') {
       list.sort((a, b) => {
         const na = `${a.first_name} ${a.last_name}`.trim() || a.email

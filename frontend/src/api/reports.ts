@@ -2,7 +2,6 @@ import { apiClient } from './client'
 
 export interface ReportRun {
   id: string
-  organization_id: string
   generated_at: string
   report_path: string
   alert_count: number
