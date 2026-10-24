@@ -8,7 +8,6 @@ Unauthenticated endpoints (login, register, health) use the public schema.
 
 from django.db import connection
 from django_tenants.middleware import TenantMainMiddleware
-from django_tenants.utils import get_public_schema_name, get_tenant_model
 
 from apps.organizations.models import Organization
 
@@ -30,10 +29,8 @@ class JWTTenantMiddleware(TenantMainMiddleware):
 
     def process_request(self, request):
         connection.set_schema_to_public()
-        TenantModel = get_tenant_model()
-        request.tenant = TenantModel.objects.filter(
-            schema_name=get_public_schema_name()
-        ).first()
+        # There is no public tenant row; the real tenant is set after JWT auth.
+        request.tenant = None
 
 
 def set_tenant_from_user(request):
