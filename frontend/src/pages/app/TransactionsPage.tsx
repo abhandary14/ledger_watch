@@ -107,7 +107,7 @@ function DatePicker({ value, onChange, placeholder = 'Pick a date' }: DatePicker
             onChange(d)
             setOpen(false)
           }}
-          initialFocus
+          autoFocus
         />
       </PopoverContent>
     </Popover>
@@ -184,7 +184,7 @@ function TransactionDetail({
 // ─── add transaction dialog ───────────────────────────────────────────────────
 
 const addSchema = z.object({
-  date: z.date({ required_error: 'Date is required' }),
+  date: z.date({ error: 'Date is required' }),
   vendor: z.string().min(1, 'Vendor is required'),
   amount: z
     .string()
@@ -218,6 +218,7 @@ function AddTransactionDialog({ open, onOpenChange }: AddTransactionDialogProps)
     mutationFn: (row: TransactionImportRow) => importTransactionsApi([row]),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['transactions'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       toast.success('Transaction added')
       onOpenChange(false)
       reset({ date: new Date() })
@@ -410,6 +411,7 @@ function ImportCsvDialog({ open, onOpenChange }: ImportCsvDialogProps) {
     mutationFn: (rows: TransactionImportRow[]) => importTransactionsApi(rows),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['transactions'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       setImportResult({ success: res.data.imported, skipped: res.data.skipped })
       setStep(4)
     },

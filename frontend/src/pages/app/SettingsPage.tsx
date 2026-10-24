@@ -35,7 +35,7 @@ const passwordSchema = z
     confirm_password: z.string(),
   })
   .refine((d) => d.new_password === d.confirm_password, {
-    message: 'Passwords do not match',
+    error: 'Passwords do not match',
     path: ['confirm_password'],
   })
 

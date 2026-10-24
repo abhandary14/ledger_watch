@@ -356,6 +356,8 @@ export function AnalysisPage() {
       setLastResult(data)
       setRunError(null)
       queryClient.invalidateQueries({ queryKey: ['analysis', 'results'] })
+      queryClient.invalidateQueries({ queryKey: ['alerts'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       toast.success('Analysis started')
     },
     onError: (err: unknown) => {

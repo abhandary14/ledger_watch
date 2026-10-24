@@ -185,8 +185,8 @@ export function DocsPage() {
         </div>
       </aside>
 
-      {/* Content */}
-      <div className="min-w-0 flex-1 space-y-12">
+      {/* Content — bottom padding lets the last section scroll into the TOC observer's band */}
+      <div className="min-w-0 flex-1 space-y-12 pb-[70vh]">
         <div>
           <h1 className="text-3xl font-bold">Documentation</h1>
           <p className="mt-1 text-muted-foreground">
