@@ -59,30 +59,58 @@ Service  (orchestration, atomic DB transactions)
 
 ---
 
-## Quick Start
-
-### With Docker (recommended)
+## Running the App
 
 ```bash
-git clone https://github.com/abhandary14/ledger-watch.git
-cd ledger-watch
-
+git clone https://github.com/abhandary14/ledger_watch.git
+cd ledger_watch
 cp config/.env.example config/.env   # edit credentials if needed
+```
+
+There are three ways to run LedgerWatch. They use the same ports (**5433** for PostgreSQL, **8000** for the API), so run only one at a time.
+
+### 1. Quick try — full stack in Docker
+
+```bash
 docker compose up --build
 ```
 
-The API will be available at `http://localhost:8000`.
+App at `http://localhost`, API at `http://localhost:8000`. Stop with `docker compose down`.
 
-### Without Docker
+### 2. Development mode — live reload while coding
+
+PostgreSQL runs in Docker; Django and Vite run on your machine.
 
 ```bash
-python -m venv .venv && source .venv/bin/activate
+docker compose up -d postgres
+python -m venv venv
+venv\Scripts\Activate.ps1          # Windows (macOS/Linux: source venv/bin/activate)
 pip install -r requirements.txt
-
-cp config/.env.example config/.env   # point DB_HOST=localhost
-python manage.py migrate
+python manage.py migrate_schemas --shared   # shared tables (orgs, users)
+python manage.py migrate_schemas            # each organization's schema
 python manage.py runserver
 ```
+
+In a second terminal:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open `http://localhost:5173` (Vite proxies `/api` to Django). Stop with `Ctrl+C` in both terminals, then `docker compose stop postgres`.
+
+### 3. Deployed mode — the Jenkins-built `main`
+
+The Jenkins pipeline deploys `main` as the Compose project `ledgerwatch`, with its own database. See **[docs/JENKINS.md](docs/JENKINS.md)** for setup. Once deployed:
+
+```bash
+docker compose -p ledgerwatch start   # app at http://localhost, API at http://localhost:8000
+docker compose -p ledgerwatch stop
+```
+
+Its containers restart automatically with Docker unless stopped — stop them before using development mode.
 
 ---
 
@@ -202,15 +230,21 @@ Copy `config/.env.example` to `config/.env` and adjust as needed:
 
 ## CI/CD
 
-The `Jenkinsfile` defines a pipeline with the following stages:
+**GitHub Actions** (`.github/workflows/ci.yml`) runs on every push and pull request to `main`, `staging`, `dev-backend` and `dev-frontend`: `ruff` and `pytest` (against PostgreSQL), plus `eslint` and `tsc` for the frontend. It gates merges.
 
-1. **Lint** — `ruff check .`
-2. **Test** — `pytest --tb=short` against an isolated PostgreSQL container
-3. **Build Image** — `docker build -t ledgerwatch:<build>`
-4. **Run Migrations** — `python manage.py migrate`
-5. **Deploy** — `docker compose up -d`
+**Jenkins** (`Jenkinsfile`) is the build-and-deploy pipeline:
 
-Credentials (`SECRET_KEY`, `DB_PASSWORD`) are injected as Jenkins secret text credentials.
+1. **Checkout**
+2. **Lint** — `ruff check .`
+3. **Test** — `pytest` against an isolated PostgreSQL container
+4. **Frontend Install** — `npm ci`
+5. **Frontend Lint** — `eslint src/`
+6. **Frontend Test** — `vitest run`
+7. **Frontend Build** — `npm run build`
+8. **Build Image** — `docker build -t ledgerwatch:<build>`
+9. **Deploy** — `docker compose up -d --build` (**`main` only**; the API container runs migrations on start)
+
+Credentials (`SECRET_KEY`, `DB_PASSWORD`) are injected as Jenkins secret text credentials. See [docs/JENKINS.md](docs/JENKINS.md) to run it locally.
 
 ---
 
@@ -235,7 +269,7 @@ ledger_watch/
 ├── tests/               # pytest test suite
 ├── config/              # .env.example
 ├── docker/              # Dockerfile
-├── docs/                # PRD.md, TDD.md
+├── docs/                # PRD.md, TDD.md, JENKINS.md
 ├── docker-compose.yml
 ├── Jenkinsfile
 └── requirements.txt
