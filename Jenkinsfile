@@ -2,25 +2,10 @@
 // LedgerWatch — Jenkinsfile
 // =============================================================================
 //
-// JENKINS CONTAINER SETUP (one-time, before running this pipeline)
-// ----------------------------------------------------------------
-// Start Jenkins with the Docker socket mounted:
-//
-//   docker run -d \
-//     --name jenkins \
-//     -p 8080:8080 \
-//     -p 50000:50000 \
-//     -v /var/run/docker.sock:/var/run/docker.sock \
-//     -v jenkins_home:/var/jenkins_home \
-//     jenkins/jenkins:lts-jdk17
-//
-// Then install Docker CLI and Compose plugin inside the Jenkins container:
-//
-//   docker exec -u root jenkins \
-//     bash -c "apt-get update && apt-get install -y docker.io docker-compose-plugin"
-//
-//   docker exec -u root jenkins usermod -aG docker jenkins
-//   docker restart jenkins
+// SETUP: see docs/JENKINS.md for the full local setup. In short, the Jenkins
+// container needs the Docker CLI plus the Compose and Buildx (>= 0.17) CLI
+// plugins, the job must be a Multibranch Pipeline (Deploy runs on main only,
+// via BRANCH_NAME), and the built-in node should have 1 executor.
 //
 // JENKINS CREDENTIALS  (Manage Jenkins → Credentials → Global → Add Credential)
 // -------------------------------------------------------------------------------
