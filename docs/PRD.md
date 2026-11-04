@@ -98,18 +98,16 @@ LedgerWatch allows transactions to be imported via API or seeded using synthetic
 Supported inputs:
 
 * JSON transaction uploads
-* CSV import endpoint
+* CSV import (parsed in the frontend and sent to the JSON import API)
 * synthetic data generator
 
 Example transaction fields:
 
 ```
 transaction_id
-organization_id
 date
 vendor
 amount
-currency
 description
 category
 ```
@@ -180,7 +178,6 @@ Alert fields:
 
 ```
 alert_id
-organization_id
 alert_type
 severity
 message
@@ -198,14 +195,14 @@ RESOLVED
 
 ---
 
-### 6.4 AI-Assisted Explanations (Optional)
+### 6.4 AI-Assisted Reports (Optional)
 
-AI is used only to generate explanations for alerts.
+AI is used only to write the narrative of the weekly financial risk report (PDF), summarizing new alerts.
 
 Example:
 
 ```
-Your cloud infrastructure spending increased significantly this month.
+Your cloud infrastructure spending increased significantly this week.
 This may indicate increased traffic or infrastructure scaling.
 ```
 
@@ -340,11 +337,14 @@ This allows new analysis modules to be added without modifying core logic.
 
 ## 11. Database Schema (High Level)
 
+Each organization's data lives in its own PostgreSQL schema (schema-per-tenant), so tenant tables carry no `organization_id`. Organizations and users live in the shared `public` schema.
+
 ### organizations
 
 ```
 id
 name
+schema_name
 created_at
 ```
 
@@ -352,7 +352,6 @@ created_at
 
 ```
 id
-organization_id
 date
 vendor
 amount
@@ -365,7 +364,6 @@ created_at
 
 ```
 id
-organization_id
 alert_type
 severity
 message
@@ -377,7 +375,6 @@ created_at
 
 ```
 id
-organization_id
 run_time
 analysis_type
 results_summary
@@ -387,7 +384,6 @@ results_summary
 
 ```
 id
-user_id
 event_type
 metadata
 created_at
@@ -505,12 +501,9 @@ Initial MVP includes:
 
 Possible future features:
 
-* dashboard UI
 * advanced anomaly detection models
 * scheduled analysis jobs
 * webhook alerts
-* multi-organization support
-* AI insight summaries
 * visualization APIs
 
 ---
