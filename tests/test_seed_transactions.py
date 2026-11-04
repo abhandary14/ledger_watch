@@ -3,6 +3,7 @@ from io import StringIO
 import pytest
 from django.core.management import call_command
 from django.core.management.base import CommandError
+from django_tenants.utils import schema_context
 
 from apps.transactions.management.commands.seed_transactions import (
     DEFAULT_COUNT,
@@ -14,6 +15,7 @@ from apps.transactions.management.commands.seed_transactions import (
     SPIKE_VENDORS,
     _recurring_counts,
 )
+from apps.organizations.models import Organization
 from apps.transactions.models import Transaction
 from services.analyzers.burn_rate import BurnRateAnalyzer
 from services.analyzers.duplicate import DuplicateTransactionAnalyzer
@@ -66,6 +68,26 @@ class TestSeedCount:
         seed(org, "--count", "100", "--seed", "1")
         seed(org, "--count", "60", "--seed", "2", "--clear")
         assert Transaction.objects.count() == 60
+
+    def test_org_name_is_case_insensitive(self, org):
+        call_command("seed_transactions", "--org", org.name.upper(), "--count", "50", stdout=StringIO())
+        assert Transaction.objects.count() == 50
+
+    def test_unknown_org_raises_and_creates_nothing(self, org):
+        before = Organization.objects.count()
+        with pytest.raises(CommandError, match="not found"):
+            call_command("seed_transactions", "--org", "No Such Org", stdout=StringIO())
+        assert Organization.objects.count() == before
+
+    def test_ambiguous_org_name_requires_exact_match(self, org):
+        other = Organization(name=org.name.lower(), schema_name="tenant_casedup")
+        other.auto_create_schema = False
+        with schema_context("public"):  # tenants can only be created from the public schema
+            other.save()
+        with pytest.raises(CommandError, match="exact name"):
+            call_command("seed_transactions", "--org", org.name.upper(), stdout=StringIO())
+        seed(org, "--count", "50")  # exact name still works
+        assert Transaction.objects.count() == 50
 
     def test_clear_only_ignores_count(self, org):
         seed(org, "--count", "100", "--seed", "1")

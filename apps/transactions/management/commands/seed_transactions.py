@@ -9,22 +9,22 @@ FIXED_COUNT anomalies (large charges, vendor spikes, duplicate pairs) is always
 included so every analyzer has something to flag; the rest of --count is split
 between recurring vendor charges and customer revenue.
 
+The organization must already exist (register it in the app first).
+
 Usage:
-    python manage.py seed_transactions
-    python manage.py seed_transactions --count 100
+    python manage.py seed_transactions --org "My Org"
+    python manage.py seed_transactions --org "My Org" --count 100
     python manage.py seed_transactions --org "My Org" --clear
 """
 
 import random
-import uuid
 from datetime import date, timedelta
 from decimal import Decimal
 
 from django.core.management.base import BaseCommand, CommandError
-from django.db import transaction as db_transaction
 from django_tenants.utils import tenant_context
 
-from apps.organizations.models import Domain, Organization
+from apps.organizations.models import Organization
 from apps.transactions.models import Transaction
 
 try:
@@ -136,8 +136,8 @@ class Command(BaseCommand):
         parser.add_argument(
             "--org",
             type=str,
-            default="Acme Corp",
-            help="Name of the organization to seed data for (default: 'Acme Corp').",
+            required=True,
+            help="Name of an existing organization to seed data for (case-insensitive).",
         )
         parser.add_argument(
             "--clear",
@@ -162,10 +162,9 @@ class Command(BaseCommand):
         fake = Faker()
         rng = random.Random(options["seed"])
 
-        org_name: str = options["org"]
         do_clear: bool = options["clear"] or options["clear_only"]
 
-        # Validate before touching the database (or creating an org).
+        # Validate before touching the database.
         if not options["clear_only"] and options["count"] < FIXED_COUNT:
             raise CommandError(
                 f"--count must be at least {FIXED_COUNT} "
@@ -173,22 +172,23 @@ class Command(BaseCommand):
             )
 
         # ------------------------------------------------------------------
-        # 1. Ensure organization exists
+        # 1. Find the organization (never create one)
         # ------------------------------------------------------------------
-        org = Organization.objects.filter(name=org_name).first()
-        if org is None:
-            # Mirror RegisterView: a tenant needs a schema_name and a Domain row.
-            with db_transaction.atomic():
-                org = Organization(name=org_name, schema_name=f"tenant_{uuid.uuid4().hex[:12]}")
-                org.save()  # auto_create_schema=True creates the PG schema + runs tenant migrations
-                Domain.objects.create(
-                    domain=f"{org.id}.ledgerwatch.local",
-                    tenant=org,
-                    is_primary=True,
-                )
-            self.stdout.write(self.style.SUCCESS(f"Created organization: '{org_name}'"))
-        else:
-            self.stdout.write(f"Using existing organization: '{org_name}'")
+        matches = list(Organization.objects.filter(name__iexact=options["org"]))
+        if not matches:
+            raise CommandError(
+                f"Organization '{options['org']}' not found. Register it in the app first."
+            )
+        if len(matches) > 1:
+            # Names are unique only case-sensitively, e.g. "Org1" and "org1".
+            exact = [o for o in matches if o.name == options["org"]]
+            if not exact:
+                names = ", ".join(f"'{o.name}'" for o in matches)
+                raise CommandError(f"--org matches several organizations ({names}); use the exact name.")
+            matches = exact
+        org = matches[0]
+        org_name = org.name
+        self.stdout.write(f"Using organization: '{org_name}'")
 
         # Transactions live in the org's own schema.
         with tenant_context(org):
