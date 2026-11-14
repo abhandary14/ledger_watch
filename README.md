@@ -1,7 +1,7 @@
 # LedgerWatch
 
-A Django REST Framework backend for financial transaction analysis and risk monitoring.
-LedgerWatch ingests synthetic business transactions, runs pluggable analysis engines, and generates severity-ranked alerts — all scoped to multi-tenant organizations.
+A financial transaction analysis and risk monitoring app: a Django REST Framework API with a React frontend.
+LedgerWatch ingests synthetic business transactions, runs pluggable analysis engines, and generates severity-ranked alerts. Each organization's data lives in its own PostgreSQL schema.
 
 ![Python](https://img.shields.io/badge/python-3.12-blue)
 ![Django](https://img.shields.io/badge/django-5.x-green)
@@ -9,8 +9,6 @@ LedgerWatch ingests synthetic business transactions, runs pluggable analysis eng
 ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
 ---
-
-## The frontend is in progress.
 
 > Most of the code and text in this project was generated with the help of AI tools.
 
@@ -126,20 +124,43 @@ Its containers restart automatically with Docker unless stopped — stop them be
 
 ## API Reference
 
-All endpoints are under `/api/v1/`.
+All endpoints are under `/api/v1/` and, except register, login and token refresh, require a JWT (`Authorization: Bearer <access>`). The organization always comes from the authenticated user, never from the request body.
+
+### Auth
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/auth/register` | Create an organization and its first user; returns a JWT pair |
+| `POST` | `/auth/login` | Returns a JWT pair |
+| `POST` | `/auth/token/refresh` | Rotate the refresh token |
+| `POST` | `/auth/logout` | Blacklist the refresh token |
+| `GET` / `PATCH` | `/auth/me` | Current user and organization / update name |
+| `POST` | `/auth/change-password` | Change password and sign out all sessions |
+
+### Organizations
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `PATCH` | `/organizations/{id}/` | Rename the organization (owner) |
+| `GET` | `/organizations/directory/` | List members (all roles) |
+| `GET` / `POST` | `/organizations/members/` | List / add members (owner) |
+| `PATCH` / `DELETE` | `/organizations/members/{id}/` | Change role / remove member (owner) |
+| `POST` | `/organizations/security-challenge/` | Get a 5-minute token required for removal and transfer |
+| `POST` | `/organizations/transfer-ownership/` | Hand ownership to an admin (owner) |
 
 ### Transactions
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/transactions/import` | Bulk-import transactions. Body: `{organization_id, transactions: [...]}` |
+| `POST` | `/transactions/import` | Bulk-import transactions (JSON). Already-imported rows are skipped |
 | `GET` | `/transactions/` | List transactions. Filters: `vendor`, `category`, `date_from`, `date_to` |
+| `GET` | `/transactions/filter-options/` | Distinct vendors and categories |
 | `GET` | `/transactions/{id}/` | Retrieve single transaction |
+| `DELETE` | `/transactions/{id}/delete` | Delete a transaction (admin, owner) |
 
 **Import request body:**
 ```json
 {
-  "organization_id": "uuid",
   "transactions": [
     {
       "date": "2025-11-01",
@@ -156,14 +177,13 @@ All endpoints are under `/api/v1/`.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/analysis/run` | Trigger an analysis run |
-| `GET` | `/analysis/results` | List runs. Filters: `organization_id`, `analysis_type`, `status` |
+| `POST` | `/analysis/run` | Trigger an analysis run (admin, owner) |
+| `GET` | `/analysis/results` | List runs. Filters: `analysis_type`, `status` |
 | `GET` | `/analysis/results/{id}/` | Retrieve single run with full `results_summary` |
 
 **Run request body:**
 ```json
 {
-  "organization_id": "uuid",
   "analysis_type": "large_transaction"
 }
 ```
@@ -172,18 +192,29 @@ All endpoints are under `/api/v1/`.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/alerts/` | List alerts. Filters: `organization_id`, `alert_type`, `severity`, `status` |
+| `GET` | `/alerts/` | List alerts. Filters: `alert_type`, `severity`, `status` |
 | `POST` | `/alerts/{id}/acknowledge` | OPEN → ACKNOWLEDGED. Returns 409 if not OPEN |
 | `POST` | `/alerts/{id}/resolve` | → RESOLVED. Returns 409 if already RESOLVED |
+| `POST` | `/alerts/{id}/reopen` | RESOLVED → OPEN. Returns 409 if not RESOLVED |
+| `DELETE` | `/alerts/{id}/delete` | Delete an alert (admin, owner) |
+
+Alert actions require the admin or owner role.
+
+### Reports
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/reports/generate` | Run all analyses and write an AI-written PDF report (owner). Returns 503 if `ANTHROPIC_API_KEY` is not set |
 
 ---
 
 ## Seed Data
 
+Register an organization in the app first; the command seeds into an existing organization (name matched case-insensitively) and never creates one.
+
 ```bash
-python manage.py seed_transactions                        # ~270 synthetic transactions
-python manage.py seed_transactions --count 100 --clear   # wipe first, then seed
-python manage.py seed_transactions --org "My Org"        # seed into named org
+python manage.py seed_transactions --org "My Org"                        # exactly 265 transactions
+python manage.py seed_transactions --org "My Org" --count 100 --clear   # wipe first, then seed exactly 100
 ```
 
 Seeded data includes anomalous large transactions, near-duplicate pairs, vendor spikes, and revenue entries — designed to trigger all four analysis engines.
@@ -195,7 +226,7 @@ Seeded data includes anomalous large transactions, near-duplicate pairs, vendor 
 ```bash
 pytest                                                          # all tests
 pytest tests/test_health.py                                    # single file
-pytest tests/test_health.py::TestHealth::test_health_check    # single test
+pytest tests/test_health.py::test_health_endpoint             # single test
 ```
 
 The test suite covers models, all four analyzers, both services, and every API endpoint.
@@ -218,7 +249,7 @@ Copy `config/.env.example` to `config/.env` and adjust as needed:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `SECRET_KEY` | *(required)* | Django secret key |
-| `DEBUG` | `True` | Set `False` in production |
+| `DEBUG` | `False` | Set `True` for local development |
 | `ALLOWED_HOSTS` | `localhost,127.0.0.1` | Comma-separated |
 | `DB_NAME` | `ledgerwatch` | PostgreSQL database name |
 | `DB_USER` | `ledger` | Database user |
@@ -253,10 +284,12 @@ Credentials (`SECRET_KEY`, `DB_PASSWORD`) are injected as Jenkins secret text cr
 ```
 ledger_watch/
 ├── apps/
-│   ├── organizations/   # Organization model (multi-tenant scoping)
+│   ├── organizations/   # Organization (tenant) + Domain, member management API
+│   ├── users/           # Custom User, auth API, role permissions
 │   ├── transactions/    # Transaction model, import API, seed command
 │   ├── analytics/       # AnalysisRun model, analysis API
-│   ├── alerts/          # Alert model, acknowledge/resolve API
+│   ├── alerts/          # Alert model, alert lifecycle API
+│   ├── reports/         # ReportRun model, AI PDF report API
 │   └── audit/           # AuditLog (write-once)
 ├── services/
 │   ├── analyzers/       # BaseAnalyzer + 4 concrete analyzers
@@ -265,7 +298,9 @@ ledger_watch/
 │   └── transaction_service.py
 ├── factories/
 │   └── analyzer_factory.py   # Factory Method pattern
-├── ledgerwatch/         # Django project config (settings, urls)
+├── ledgerwatch/         # Django project config, tenant middleware and view mixin
+├── frontend/            # React 19 + TypeScript app (Vite)
+├── .github/workflows/   # GitHub Actions CI
 ├── tests/               # pytest test suite
 ├── config/              # .env.example
 ├── docker/              # Dockerfile
